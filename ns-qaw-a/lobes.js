@@ -159,3 +159,21 @@ export function buildGeo(sites, cells, { bandPin = null, selectedId = null, boun
 
   return { siteFc, sectorFc, spiderFc, labelFc }
 }
+
+/** Planned / coming-soon rings from cell-plan status — not a second invented network. */
+export function buildPlanned(sites) {
+  const features = []
+  for (const s of sites) {
+    if (v(s.status) !== 'planned') continue
+    const lng = v(s.lng)
+    const lat = v(s.lat)
+    if (lng == null || lat == null) continue
+    features.push({
+      type: 'Feature',
+      id: `planned-${s.site_id}`,
+      properties: { id: s.site_id, site_id: s.site_id, status: 'planned' },
+      geometry: { type: 'Point', coordinates: [lng, lat] },
+    })
+  }
+  return { type: 'FeatureCollection', features }
+}

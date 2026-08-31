@@ -216,6 +216,7 @@ def build_site(sid, rows, ann, flag, alarms_by_site, oos_cells, check_time, lock
         "lat": field(lat, "cell-plan"),
         "lng": field(lng, "cell-plan"),
         "height_m": field(num(head.get("height_m")), "cell-plan"),
+        "on_air_date": field(None, "absent"),
         "ems_server": field(head.get("enbName"), "cell-plan"),
         "alarm_summary": {
             "count": int(flag.get("activeAlarmCount") or len(site_alarms)),
@@ -346,8 +347,11 @@ def main() -> None:
         "envelope": {
             "mcc_mnc": MCC_MNC,
             "ecgi_pattern": "440-11-{enbId}-{cellId}",
+            "ecgi_source": "envelope — sample ecgi_master.csv IDs (TKY-*) do not match TOK cluster",
             "sample_rows_ignored": len(ecgi_sample),
             "cm_sample_rows_ignored": len(cm_sample),
+            "on_air_dates": 0,
+            "on_air_date_source": "absent — cell-plan has no on-air column; no daily on-air file in this ingest",
         },
         "enums": {
             "tech": TECH_ENUM,

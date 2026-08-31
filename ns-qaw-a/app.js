@@ -1,4 +1,4 @@
-import { v, buildGeo } from './lobes.js'
+import { v, buildGeo, buildPlanned } from './lobes.js'
 import { defaultRecipe, applyRecipe, counts, chipList, dismissChip, renderFacets } from './filters.js'
 import { createMap, dressAndPaint, setMeasureData, setUserData, setProbeData, queryHit, setBasemap, visibleLayers, applyView, setSelectedState } from './map.js'
 import { searchHits, measureDistance, measureRadius, layersToGeoJSON, layersToKml, download, parseImport, snapshotCanvas, downloadPng } from './tools.js'
@@ -71,6 +71,7 @@ function paint() {
   const zoom = state.map?.getZoom?.() ?? 13
   const bounds = state.map?.getBounds?.() ?? null
   state.geo = buildGeo(sites, cells, { bandPin, selectedId: state.selected, bounds, zoom, keepIds: neighborIds })
+  state.geo.plannedFc = buildPlanned(state.inv.sites)
   if (state.map) {
     dressAndPaint(state.map, state.geo, state.recipe, {
       gh: state.heavy?.gh,
@@ -143,6 +144,7 @@ function renderCard() {
       <tr><th>EMS</th><td>${v(site.ems_server)}</td></tr>
       <tr><th>Type</th><td>${v(site.site_type)} · ${v(site.morphology)}</td></tr>
       <tr><th>Height</th><td>${v(site.height_m)} m</td></tr>
+      <tr><th>On-air</th><td>${v(site.on_air_date) || '—'} <span class="prov">${v(site.on_air_date) ? '' : 'no daily on-air file in this ingest'}</span></td></tr>
       <tr><th>Alarms</th><td>${site.alarm_summary?.count || 0} · ${site.alarm_summary?.highest || '—'}</td></tr>
     </table>
     <table>
