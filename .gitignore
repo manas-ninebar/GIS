@@ -47,6 +47,10 @@ dist/
 Thumbs.db
 desktop.ini
 
+# Nested clone of this repo (mode 160000 gitlink). Cursor/VS Code
+# treats GIS/GIS/.git as a second Source Control root.
+/GIS/
+
 # ---- editor / local ----
 .idea/
 .vscode/

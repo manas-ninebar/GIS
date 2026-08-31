@@ -144,7 +144,7 @@ function ensureSources(map) {
       clusterRadius: 52,
     })
   }
-  for (const id of ['sectors', 'spider', 'labels', 'holes', 'measure', 'user', 'probe', 'planned', 'neighbors']) {
+  for (const id of ['sectors', 'spider', 'labels', 'holes', 'measure', 'user', 'probe', 'planned', 'neighbors', 'candidate']) {
     if (!map.getSource(id)) {
       map.addSource(id, { type: 'geojson', data: emptyFc(), promoteId: 'id' })
     }
@@ -226,6 +226,27 @@ function ensureLayers(map, recipe = {}) {
       'circle-opacity': 0.12,
       'circle-stroke-width': 2,
       'circle-stroke-color': '#D6AE45',
+      'circle-pitch-alignment': 'map',
+    },
+  })
+  addLayer(map, {
+    id: 'candidate-ring', type: 'circle', source: 'candidate',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 14, 15, 22],
+      'circle-color': '#4FBDB6',
+      'circle-opacity': 0.14,
+      'circle-stroke-width': 2.2,
+      'circle-stroke-color': '#4FBDB6',
+      'circle-pitch-alignment': 'map',
+    },
+  })
+  addLayer(map, {
+    id: 'candidate-pin', type: 'circle', source: 'candidate',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 6, 15, 9],
+      'circle-color': '#4FBDB6',
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#E3EAED',
       'circle-pitch-alignment': 'map',
     },
   })
@@ -398,6 +419,7 @@ export function dressAndPaint(map, geo, recipe, extras = {}) {
     map.getSource('holes')?.setData(recipe.holesLayer && extras.holes ? extras.holes : emptyFc())
     map.getSource('planned')?.setData(recipe.plannedLayer && geo.plannedFc ? geo.plannedFc : emptyFc())
     map.getSource('neighbors')?.setData(extras.neighborLines || emptyFc())
+    map.getSource('candidate')?.setData(extras.candidateFc || emptyFc())
     setSelectedState(map, extras.selectedId || null)
     setNeighborState(map, extras.neighborIds)
     paintHeavy(map, { gh: extras.gh, dt: extras.dt, recipe }).catch((err) => {
@@ -449,7 +471,7 @@ function bindHover(map) {
       map.__hov = next
       map.getCanvas().style.cursor = 'pointer'
     } else {
-      map.getCanvas().style.cursor = ''
+      map.getCanvas().style.cursor = map.__tool === 'drop' ? 'crosshair' : ''
     }
   })
 }
@@ -470,7 +492,7 @@ export function setProbeData(map, fc) {
 }
 
 export function queryHit(map, e) {
-  const layers = ['neighbors-line', 'sectors-3d', 'sectors', 'planned-ring', 'sites', 'sites-cluster'].filter((id) => map.getLayer(id))
+  const layers = ['candidate-pin', 'candidate-ring', 'neighbors-line', 'sectors-3d', 'sectors', 'planned-ring', 'sites', 'sites-cluster'].filter((id) => map.getLayer(id))
   const hits = map.queryRenderedFeatures(e.point, { layers })
   const f = hits[0]
   if (!f) return null
@@ -509,10 +531,14 @@ export async function setBasemap(map, name, after) {
   })
 }
 
-export function visibleLayers(geo, recipe, userFc) {
+export function visibleLayers(geo, recipe, userFc, extras = {}) {
   const layers = [{ name: 'sites', fc: geo.siteFc }]
   if (recipe.sectorsLayer) layers.push({ name: 'sectors', fc: geo.sectorFc })
+  if (recipe.sectorsLayer && geo.labelFc?.features?.length) layers.push({ name: 'labels', fc: geo.labelFc })
   if (recipe.plannedLayer && geo.plannedFc?.features?.length) layers.push({ name: 'planned', fc: geo.plannedFc })
+  if (extras.neighborLines?.features?.length) layers.push({ name: 'neighbors', fc: extras.neighborLines })
+  if (extras.candidateFc?.features?.length) layers.push({ name: 'candidate', fc: extras.candidateFc })
+  if (recipe.holesLayer && extras.holes?.features?.length) layers.push({ name: 'holes', fc: extras.holes })
   if (userFc?.features?.length) layers.push({ name: 'user', fc: userFc })
   return layers
 }

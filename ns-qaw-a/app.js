@@ -5,7 +5,7 @@ import { searchHits, measureDistance, measureRadius, layersToGeoJSON, layersToKm
 import { interpret, contextChips, getKey, setKey } from './chat.js'
 import { loadPacked, pickPoint, describePick } from './heavy.js'
 import { buildHoles } from './holes.js'
-import { tier1Candidates, monitoredIds, neighborLines } from './neighbors.js'
+import { tier1Candidates, tier1CandidatesAt, monitoredIds, neighborLines, candidateFc, PIN_ID, sessionKey, persistNeighbors, recallNeighbors, applyRecall, appendEvent, auditPayload, auditCsv } from './neighbors.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -54,7 +54,8 @@ function withNeighbors(sites, cells, neighborIds) {
   if (!state.neighbors) return { sites, cells }
   const haveCells = new Set(cells.map((c) => c.cell_id))
   const addCells = state.inv.cells.filter((c) => neighborIds.has(c.cell_id) && !haveCells.has(c.cell_id))
-  const wantSites = new Set([state.neighbors.targetId, ...addCells.map((c) => c.site_id)])
+  const wantSites = new Set(addCells.map((c) => c.site_id))
+  if (state.neighbors.kind !== 'pin') wantSites.add(state.neighbors.targetId)
   const haveSites = new Set(sites.map((s) => s.site_id))
   const addSites = state.inv.sites.filter((s) => wantSites.has(s.site_id) && !haveSites.has(s.site_id))
   return {
@@ -65,6 +66,8 @@ function withNeighbors(sites, cells, neighborIds) {
 
 function paint() {
   const neighborIds = monitoredIds(state.neighbors)
+  const nbLines = state.neighbors ? neighborLines(state.inv, state.neighbors, neighborIds) : null
+  const pinFc = candidateFc(state.neighbors)
   const base = filtered()
   const { sites, cells } = withNeighbors(base.sites, base.cells, neighborIds)
   const bandPin = state.recipe.band.length === 1 ? state.recipe.band[0] : null
@@ -79,7 +82,8 @@ function paint() {
       selectedId: state.selected,
       holes: state.holesFc,
       neighborIds,
-      neighborLines: state.neighbors ? neighborLines(state.inv, state.neighbors.targetId, neighborIds) : null,
+      neighborLines: nbLines,
+      candidateFc: pinFc,
     })
   }
   const c = counts(state.inv, state.recipe)
@@ -120,51 +124,38 @@ function siteOf(id) {
   return state.inv.sites.find((s) => s.site_id === id)
 }
 
-function renderCard() {
-  const el = $('card')
-  const site = siteOf(state.selected)
-  if (!site) { el.hidden = true; return }
-  const cells = state.inv.cells.filter((c) => c.site_id === site.site_id)
-  const alarms = (site.alarms || []).map((a) =>
-    `<div class="alarm ${a.severity}">${a.severity} · ${a.problem}${a.root_cause ? ' · root' : ''}<div class="prov">${a.text || ''} ← ${a.source}</div></div>`
-  ).join('')
-  el.hidden = false
-  placeCard()
-  el.innerHTML = `
-    <header class="card-head">
-      <div>
-        <div class="u-mono kicker">Site · ${v(site.status)}</div>
-        <h2>${site.site_id}</h2>
-        <div class="prov">${v(site.sarf_id)} · ${v(site.enb_name)} · ${v(site.site_type_plan)}</div>
-      </div>
-      <button type="button" class="icon-btn" id="card-x" aria-label="Close">×</button>
-    </header>
-    <div class="card-body">
+function metaCell(label, value) {
+  return `<div><dt>${label}</dt><dd>${value}</dd></div>`
+}
+
+function renderConfig(site, cells) {
+  const head = cells[0]
+  const carrier = head
+    ? `${v(head.tech)} ${v(head.band)} · EARFCN ${v(head.earfcn_dl) ?? '—'}/${v(head.earfcn_ul) ?? '—'} · ${v(head.bandwidth) || '—'}`
+    : '—'
+  return `
     <table>
-      <tr><th>EMS</th><td>${v(site.ems_server)}</td></tr>
-      <tr><th>Type</th><td>${v(site.site_type)} · ${v(site.morphology)}</td></tr>
-      <tr><th>Height</th><td>${v(site.height_m)} m</td></tr>
-      <tr><th>On-air</th><td>${v(site.on_air_date) || '—'} <span class="prov">${v(site.on_air_date) ? '' : 'no daily on-air file in this ingest'}</span></td></tr>
-      <tr><th>Alarms</th><td>${site.alarm_summary?.count || 0} · ${site.alarm_summary?.highest || '—'}</td></tr>
+      <tr><th>eNB</th><td>${v(site.enb_name)} · id ${v(site.enb_id)}</td></tr>
+      <tr><th>Carrier</th><td>${carrier}</td></tr>
+      <tr><th>Height</th><td>${v(site.height_m) ?? '—'} m</td></tr>
+      <tr><th>Hotspot</th><td>${cells.map((c) => v(c.hotspot)).filter(Boolean)[0] || '—'}</td></tr>
     </table>
     <table>
-      <tr><th>Cell</th><th>ECGI</th><th>PCI</th><th>Az</th><th>HPBW</th><th>Tilt</th></tr>
+      <thead><tr><th>Cell</th><th>ECGI</th><th>PCI</th><th>Az</th><th>HPBW</th><th>Tilt m/e</th><th>Tx</th></tr></thead>
+      <tbody>
       ${cells.map((c) => {
         const mech = v(c.mech_tilt)
         const elec = v(c.elec_tilt)
-        const tilt = `${mech ?? '—'}°/${elec ?? '—'}°`
-        return `<tr class="row-hit" data-cell="${c.cell_id}"><td>${v(c.cell_name)}</td><td>${v(c.ecgi)}</td><td>${v(c.pci)}</td><td>${v(c.azimuth)}°</td><td>${v(c.hpbw) || 65}°</td><td>${tilt}</td></tr>`
+        const tx = v(c.tx_power)
+        return `<tr class="row-hit" data-cell="${c.cell_id}"><td>${v(c.cell_name)}</td><td>${v(c.ecgi)}</td><td>${v(c.pci)}</td><td>${v(c.azimuth)}°</td><td>${v(c.hpbw) || 65}°</td><td>${mech ?? '—'}°/${elec ?? '—'}°</td><td>${tx == null ? '—' : `${tx} dBm`}</td></tr>`
       }).join('')}
+      </tbody>
     </table>
-    ${alarms || ''}
-    ${state.neighbors?.targetId === site.site_id ? renderNeighborSection(state.neighbors) : ''}
-    ${site.note ? `<div class="prov">${site.note}</div>` : ''}
-    <div class="prov">${Number(v(site.lat)).toFixed(5)} N · ${Number(v(site.lng)).toFixed(5)} E · WGS84 ← cell-plan</div>
-    <div class="prov">Observed ${state.inv.clock?.t || '—'} ← ${state.inv.clock?.source || 'clock'} · ${cells.length} cells · EPSG:4326</div>
-    <div class="prov">Lobe is HPBW −3 dB contour × azimuth × mech+elec tilt. No MSI/.pattern in this ingest.</div>
-    <div class="prov">ECGI values above are generated from the cell plan's own eNB and cell IDs ← ecgi-envelope. This ingest has no real ECGI master file to read them from instead.</div>
-    </div>
+    <div class="prov">Config ← cell-plan. ECGI envelope 440-11-{enb}-{cell}. No CM join, no MSI/.pattern, no daily on-air file.</div>
   `
+}
+
+function bindCardChrome(el) {
   $('card-x').onclick = () => { clearNeighbors(); state.selected = null; paint(); renderStarters() }
   el.querySelectorAll('[data-cell]').forEach((row) => {
     row.onclick = () => {
@@ -177,6 +168,72 @@ function renderCard() {
   el.querySelectorAll('[data-nb-x]').forEach((btn) => {
     btn.onclick = () => toggleNeighborCell(btn.dataset.nbX)
   })
+  const jsonBtn = $('nb-json')
+  const csvBtn = $('nb-csv')
+  if (jsonBtn) jsonBtn.onclick = () => exportAudit('json')
+  if (csvBtn) csvBtn.onclick = () => exportAudit('csv')
+}
+
+function renderCard() {
+  const el = $('card')
+  if (state.neighbors?.kind === 'pin' && (state.selected === PIN_ID || !state.selected)) {
+    const n = monitoredIds(state.neighbors).size
+    el.hidden = false
+    placeCard()
+    el.innerHTML = `
+      <header class="card-head">
+        <div>
+          <div class="u-mono kicker">Candidate · not in inventory</div>
+          <h2>New site</h2>
+          <dl class="metastrip">
+            ${metaCell('Facing', `${n} sectors`)}
+            ${metaCell('Lat', state.neighbors.lat.toFixed(5))}
+            ${metaCell('Lng', state.neighbors.lng.toFixed(5))}
+          </dl>
+        </div>
+        <button type="button" class="icon-btn" id="card-x" aria-label="Close">×</button>
+      </header>
+      <div class="card-body">
+        ${renderNeighborSection(state.neighbors)}
+        <div class="prov">WGS84 · ${state.inv.clock?.t || '—'} ← ${state.inv.clock?.source || 'clock'}</div>
+      </div>
+    `
+    bindCardChrome(el)
+    return
+  }
+  const site = siteOf(state.selected)
+  if (!site) { el.hidden = true; return }
+  const cells = state.inv.cells.filter((c) => c.site_id === site.site_id)
+  const alarms = (site.alarms || []).map((a) =>
+    `<div class="alarm ${a.severity}">${a.severity} · ${a.problem}${a.root_cause ? ' · root' : ''}<div class="prov">${a.text || ''} ← ${a.source}</div></div>`
+  ).join('')
+  const nbOn = state.neighbors?.kind !== 'pin' && state.neighbors?.targetId === site.site_id
+  el.hidden = false
+  placeCard()
+  el.innerHTML = `
+    <header class="card-head">
+      <div>
+        <div class="u-mono kicker">Site · ${v(site.status)}</div>
+        <h2>${site.site_id}</h2>
+        <div class="prov">${v(site.sarf_id)} · ${v(site.site_type_plan)}</div>
+        <dl class="metastrip">
+          ${metaCell('EMS', v(site.ems_server) || '—')}
+          ${metaCell('Cells', String(cells.length))}
+          ${metaCell('Alarms', `${site.alarm_summary?.count || 0}`)}
+          ${metaCell('Type', `${v(site.site_type)} · ${v(site.morphology)}`)}
+        </dl>
+      </div>
+      <button type="button" class="icon-btn" id="card-x" aria-label="Close">×</button>
+    </header>
+    <div class="card-body">
+    ${nbOn ? renderNeighborSection(state.neighbors) : ''}
+    ${renderConfig(site, cells)}
+    ${alarms || ''}
+    ${site.note ? `<div class="prov">${site.note}</div>` : ''}
+    <div class="prov">${Number(v(site.lat)).toFixed(5)} N · ${Number(v(site.lng)).toFixed(5)} E · WGS84 ← cell-plan · ${state.inv.clock?.t || '—'}</div>
+    </div>
+  `
+  bindCardChrome(el)
 }
 
 function renderNeighborSection(nb) {
@@ -185,11 +242,24 @@ function renderNeighborSection(nb) {
     const c = state.inv.cells.find((x) => x.cell_id === id)
     if (!c) return ''
     const added = nb.added.has(id)
-    return `<div class="nb-row">${c.site_id} · ${v(c.cell_name)}${added ? ' <em>+added</em>' : ''}<button type="button" data-nb-x="${id}" aria-label="Remove">×</button></div>`
+    const tag = added ? '<em>+added</em>' : '<span class="tag-auto">auto</span>'
+    return `<div class="nb-row">${c.site_id} · ${v(c.cell_name)} ${tag}<button type="button" data-nb-x="${id}" aria-label="Remove">×</button></div>`
+  }).join('')
+  const log = (nb.events || []).slice(-8).reverse().map((e) => {
+    const clock = (e.t || '').replace('T', ' ').slice(11, 19)
+    return `<div class="nb-log-row">${clock} · ${e.action}${e.cellId ? ` · ${e.cellId}` : ''}</div>`
   }).join('')
   return `
-    <div class="prov">Tier-1 neighbours · ${ids.length} monitored (${nb.auto.size} auto-proposed within 1.2 km${nb.added.size ? ` · +${nb.added.size} added` : ''}${nb.removed.size ? ` · −${nb.removed.size} removed` : ''}) · click a sector on the map to add or remove it</div>
-    <div class="nb-list">${rows || '<div class="nb-row">None facing within range — add sectors by clicking them.</div>'}</div>
+    <div class="nb-panel">
+      <div class="nb-head">Tier-1 · ${ids.length} monitored</div>
+      <p class="nb-sub">${nb.auto.size} auto within 1.2 km${nb.added.size ? ` · +${nb.added.size} added` : ''}${nb.removed.size ? ` · −${nb.removed.size} removed` : ''} · click a sector to add or remove. Audit stays in this browser.</p>
+      <div class="nb-list">${rows || '<div class="nb-row">None facing within range — add sectors by clicking them.</div>'}</div>
+      <div class="nb-actions">
+        <button type="button" id="nb-json">Audit JSON</button>
+        <button type="button" id="nb-csv">Audit CSV</button>
+      </div>
+      <div class="nb-log">${log || '<div class="nb-log-row">Auto-proposed set is the trail until you add or remove.</div>'}</div>
+    </div>
   `
 }
 
@@ -233,7 +303,10 @@ function select(id) {
   // Leaving the target site tears the overlay down with it — otherwise the dashed
   // connectors linger with no card explaining them. Clearing state alone isn't enough:
   // select() doesn't normally repaint, so the stale lines need an explicit paint().
-  const dropping = !!state.neighbors && state.neighbors.targetId !== id
+  const n = state.neighbors
+  const dropping = !!n && (
+    n.kind === 'pin' ? id !== PIN_ID : n.targetId !== id
+  )
   if (dropping) clearNeighbors()
   state.selected = id
   if (state.map) setSelectedState(state.map, id)
@@ -241,45 +314,106 @@ function select(id) {
   renderCard()
   recipeHash()
   renderStarters()
-  if (id) flyToSite(id)
+  if (id && id !== PIN_ID) flyToSite(id)
 }
 
 function clearNeighbors() {
   if (!state.neighbors) return
+  persistNeighbors(state.neighbors)
+  const wasPin = state.neighbors.kind === 'pin'
   state.neighbors = null
   if (state.section === 'neighbors') state.section = null
+  if (wasPin && state.selected === PIN_ID) state.selected = null
+}
+
+function bootNeighborSession({ kind, targetId, lat, lng, autoIds, restored }) {
+  const recalled = recallNeighbors(kind === 'pin'
+    ? sessionKey({ kind: 'pin', lat, lng })
+    : sessionKey({ kind: 'site', targetId }))
+  const sets = applyRecall(autoIds, recalled)
+  state.neighbors = { kind, targetId, lat, lng, ...sets }
+  if (!sets.events.length) appendEvent(state.neighbors, restored && recalled ? 'restore' : 'auto')
+  else if (recalled) appendEvent(state.neighbors, 'reopen')
+  persistNeighbors(state.neighbors)
+  state.section = 'neighbors'
+  state.selected = targetId
+  state.recipe = { ...state.recipe, sectorsLayer: true }
+  paint()
+  renderStarters()
 }
 
 function startNeighbors(siteId) {
-  if (!siteOf(siteId)) {
+  const site = siteOf(siteId)
+  if (!site) {
     logMsg(`No site ${siteId} in this inventory.`)
     return
   }
   const auto = tier1Candidates(state.inv, siteId)
-  state.neighbors = { targetId: siteId, auto: new Set(auto.map((c) => c.cellId)), added: new Set(), removed: new Set() }
-  state.section = 'neighbors'
-  state.selected = siteId
-  // The highlight rides on the sector polygons, so the layer has to be on.
-  state.recipe = { ...state.recipe, sectorsLayer: true }
-  paint()
-  renderStarters()
+  bootNeighborSession({
+    kind: 'site',
+    targetId: siteId,
+    lat: v(site.lat),
+    lng: v(site.lng),
+    autoIds: auto.map((c) => c.cellId),
+  })
   flyToSite(siteId)
+}
+
+function startNeighborsPin(lng, lat) {
+  const auto = tier1CandidatesAt(state.inv, lat, lng)
+  bootNeighborSession({
+    kind: 'pin',
+    targetId: PIN_ID,
+    lat,
+    lng,
+    autoIds: auto.map((c) => c.cellId),
+  })
+  if (state.map) {
+    const three = state.recipe.view === '3d'
+    state.map.flyTo({
+      center: [lng, lat],
+      zoom: Math.max(state.map.getZoom(), three ? 15.2 : 14.6),
+      pitch: three ? 68 : 0,
+      duration: 700,
+    })
+  }
 }
 
 function toggleNeighborCell(cellId) {
   const n = state.neighbors
   if (!n) return
   const cell = state.inv.cells.find((c) => c.cell_id === cellId)
-  if (!cell || cell.site_id === n.targetId) return
+  if (!cell || (n.kind !== 'pin' && cell.site_id === n.targetId)) return
   if (n.auto.has(cellId)) {
-    if (n.removed.has(cellId)) n.removed.delete(cellId)
-    else n.removed.add(cellId)
+    if (n.removed.has(cellId)) {
+      n.removed.delete(cellId)
+      appendEvent(n, 'restore', cellId)
+    } else {
+      n.removed.add(cellId)
+      appendEvent(n, 'remove', cellId)
+    }
   } else if (n.added.has(cellId)) {
     n.added.delete(cellId)
+    appendEvent(n, 'unadd', cellId)
   } else {
     n.added.add(cellId)
+    appendEvent(n, 'add', cellId)
   }
+  persistNeighbors(n)
   paint()
+}
+
+function exportAudit(kind) {
+  if (!state.neighbors) {
+    logMsg('No neighbour session to export — select a site or drop a pin first.')
+    return
+  }
+  persistNeighbors(state.neighbors)
+  const payload = auditPayload(state.inv, state.neighbors)
+  const stamp = (payload.key || 'nb').replace(/[^a-zA-Z0-9._-]+/g, '_')
+  if (kind === 'csv') download(`ns-qaw-a-neighbors-${stamp}.csv`, auditCsv(state.inv, state.neighbors), 'text/csv')
+  else download(`ns-qaw-a-neighbors-${stamp}.json`, JSON.stringify(payload, null, 2), 'application/json')
+  logMsg(`Neighbour audit saved (${payload.monitored.length} monitored).`)
 }
 
 function logMsg(text, who = 'bot') {
@@ -322,6 +456,10 @@ function applyIntent(intent) {
     select(intent.select ?? null)
   } else if (intent.type === 'neighbors' && intent.siteId) {
     startNeighbors(intent.siteId)
+  } else if (intent.type === 'drop') {
+    setTool('drop')
+  } else if (intent.type === 'audit') {
+    exportAudit(intent.format || 'json')
   } else if (intent.type === 'qa') {
     if (intent.select) state.selected = intent.select
     else if (intent.site?.site_id) state.selected = intent.site.site_id
@@ -419,16 +557,29 @@ function bindSearch() {
   })
 }
 
+function setTool(name) {
+  state.tool = name
+  state.measurePts = []
+  document.querySelectorAll('.tool[data-tool]').forEach((b) => b.classList.toggle('on', b.dataset.tool === name))
+  if (state.map) {
+    state.map.__tool = name
+    state.map.getCanvas().style.cursor = name === 'drop' ? 'crosshair' : ''
+    setMeasureData(state.map, null)
+    setProbeData(state.map, null)
+  }
+  if (name === 'drop') {
+    $('measure').hidden = false
+    $('measure').classList.add('armed')
+    $('measure').textContent = 'Click the map to place a candidate rooftop'
+  } else {
+    $('measure').hidden = true
+    $('measure').classList.remove('armed')
+  }
+}
+
 function bindTools() {
   document.querySelectorAll('.tool[data-tool]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      state.tool = btn.dataset.tool
-      state.measurePts = []
-      document.querySelectorAll('.tool[data-tool]').forEach((b) => b.classList.toggle('on', b === btn))
-      $('measure').hidden = true
-      setMeasureData(state.map, null)
-      setProbeData(state.map, null)
-    })
+    btn.addEventListener('click', () => setTool(btn.dataset.tool))
   })
   $('basemap').addEventListener('change', () => {
     setBasemap(state.map, $('basemap').value, () => paint())
@@ -454,11 +605,20 @@ function bindTools() {
       logMsg(`Import failed: ${err.message}`)
     }
   })
+  const exportExtras = () => ({
+    neighborLines: state.neighbors ? neighborLines(state.inv, state.neighbors, monitoredIds(state.neighbors)) : null,
+    candidateFc: candidateFc(state.neighbors),
+    holes: state.holesFc,
+  })
   $('btn-geojson').onclick = () => {
-    download('ns-qaw-a.geojson', JSON.stringify(layersToGeoJSON(visibleLayers(state.geo, state.recipe, state.userFc)), null, 2), 'application/geo+json')
+    const extras = exportExtras()
+    download('ns-qaw-a.geojson', JSON.stringify(layersToGeoJSON(visibleLayers(state.geo, state.recipe, state.userFc, extras)), null, 2), 'application/geo+json')
+    logMsg('GeoJSON is vector layers only — Groundhog and drive-test stay on the GPU, not in this file.')
   }
   $('btn-kml').onclick = () => {
-    download('ns-qaw-a.kml', layersToKml(visibleLayers(state.geo, state.recipe, state.userFc)), 'application/vnd.google-earth.kml+xml')
+    const extras = exportExtras()
+    download('ns-qaw-a.kml', layersToKml(visibleLayers(state.geo, state.recipe, state.userFc, extras)), 'application/vnd.google-earth.kml+xml')
+    logMsg('KML is vector layers only — Groundhog and drive-test stay on the GPU, not in this file.')
   }
   $('btn-shot').onclick = () => {
     recipeHash()
@@ -484,6 +644,14 @@ function onMapClick(e) {
     $('measure').hidden = false
     $('measure').textContent = res.label
     state.measurePts = []
+    return
+  }
+  if (state.tool === 'drop') {
+    startNeighborsPin(e.lngLat.lng, e.lngLat.lat)
+    setTool('pan')
+    $('measure').hidden = false
+    $('measure').classList.remove('armed')
+    $('measure').textContent = `Candidate ${e.lngLat.lat.toFixed(5)} N ${e.lngLat.lng.toFixed(5)} E — click sectors to add or remove`
     return
   }
   const hit = queryHit(state.map, e)

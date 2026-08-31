@@ -68,7 +68,7 @@ export function layersToKml(layers) {
   for (const l of layers) {
     for (const f of l.fc.features) {
       const g = f.geometry
-      const name = esc(f.properties.id || l.name)
+      const name = esc(f.properties.label || f.properties.id || l.name)
       if (g.type === 'Point') {
         const [lng, lat] = g.coordinates
         marks.push(`<Placemark><name>${name}</name><Point><coordinates>${lng},${lat},0</coordinates></Point></Placemark>`)
