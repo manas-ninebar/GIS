@@ -70,7 +70,7 @@ export function createMap(container, { view = '2d', onLoad } = {}) {
     preserveDrawingBuffer: true,
     hash: false,
   })
-  map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), 'bottom-right')
+  map.addControl(new maplibregl.NavigationControl({ visualizePitch: false, showCompass: true }), 'top-right')
   map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-left')
   map.__view = view
   bindHover(map)
@@ -134,7 +134,17 @@ function emptyFc() {
 }
 
 function ensureSources(map) {
-  for (const id of ['sites', 'sectors', 'spider', 'labels', 'measure', 'user']) {
+  if (!map.getSource('sites')) {
+    map.addSource('sites', {
+      type: 'geojson',
+      data: emptyFc(),
+      promoteId: 'id',
+      cluster: true,
+      clusterMaxZoom: 9,
+      clusterRadius: 52,
+    })
+  }
+  for (const id of ['sectors', 'spider', 'labels', 'holes', 'measure', 'user']) {
     if (!map.getSource(id)) {
       map.addSource(id, { type: 'geojson', data: emptyFc(), promoteId: 'id' })
     }
@@ -154,8 +164,31 @@ function vis(on) {
 function ensureLayers(map, recipe = {}) {
   const three = recipe.view === '3d'
   addLayer(map, {
+    id: 'sites-cluster', type: 'circle', source: 'sites',
+    filter: ['has', 'point_count'],
+    maxzoom: 10,
+    paint: {
+      'circle-color': '#0F4661',
+      'circle-radius': ['step', ['get', 'point_count'], 10, 20, 14, 100, 18, 1000, 24],
+      'circle-stroke-width': 1.4,
+      'circle-stroke-color': '#E3EAED',
+      'circle-opacity': 0.92,
+    },
+  })
+  addLayer(map, {
+    id: 'sites-cluster-count', type: 'symbol', source: 'sites',
+    filter: ['has', 'point_count'],
+    maxzoom: 10,
+    layout: {
+      'text-field': ['get', 'point_count_abbreviated'],
+      'text-font': ['Noto Sans Regular'],
+      'text-size': 11,
+    },
+    paint: { 'text-color': '#E3EAED' },
+  })
+  addLayer(map, {
     id: 'sites-glow', type: 'circle', source: 'sites',
-    filter: ['==', ['get', 'in_alarm'], 1],
+    filter: ['all', ['!', ['has', 'point_count']], ['==', ['get', 'in_alarm'], 1]],
     paint: {
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 8, 8, 15, 18],
       'circle-color': '#A9433A',
@@ -166,6 +199,7 @@ function ensureLayers(map, recipe = {}) {
   })
   addLayer(map, {
     id: 'sites', type: 'circle', source: 'sites',
+    filter: ['!', ['has', 'point_count']],
     paint: {
       'circle-radius': [
         'interpolate', ['linear'], ['zoom'],
@@ -184,10 +218,19 @@ function ensureLayers(map, recipe = {}) {
       'circle-opacity': 0.95,
     },
   })
-  // P3 / STACK: wedge z10–15 (2D fill). Dots only below z10.
+  addLayer(map, {
+    id: 'holes', type: 'fill', source: 'holes',
+    minzoom: 11,
+    paint: {
+      'fill-color': '#A9433A',
+      'fill-opacity': 0.18,
+      'fill-outline-color': '#7a2e28',
+    },
+  })
+  // Dots z<10. Wedge fill z10–15 (and z>15 in 2D). Outline same range.
   addLayer(map, {
     id: 'sectors', type: 'fill', source: 'sectors',
-    minzoom: 10, maxzoom: 15,
+    minzoom: 10,
     paint: {
       'fill-color': ['get', 'color'],
       'fill-opacity': [
@@ -198,7 +241,16 @@ function ensureLayers(map, recipe = {}) {
       ],
     },
   })
-  // P9 / STACK: 3D beam only z>15, and only when 3D has earned its place.
+  addLayer(map, {
+    id: 'sectors-line', type: 'line', source: 'sectors',
+    minzoom: 10,
+    paint: {
+      'line-color': ['get', 'color'],
+      'line-width': 1.15,
+      'line-opacity': 0.72,
+    },
+  })
+  // 3D beam z>15 only when 3D view has earned its place.
   addLayer(map, {
     id: 'sectors-3d', type: 'fill-extrusion', source: 'sectors',
     minzoom: 15,
@@ -216,12 +268,15 @@ function ensureLayers(map, recipe = {}) {
     paint: { 'line-color': ['get', 'color'], 'line-width': 1.15, 'line-dasharray': [1.1, 1.3], 'line-opacity': 0.75 },
   })
   addLayer(map, {
-    id: 'labels', type: 'symbol', source: 'labels', minzoom: 13.2,
+    id: 'labels', type: 'symbol', source: 'labels', minzoom: 14.4,
     layout: {
       'text-field': ['get', 'label'],
       'text-size': 11,
       'text-font': ['Noto Sans Regular'],
       'text-pitch-alignment': 'viewport',
+      'text-optional': true,
+      'text-padding': 4,
+      'text-allow-overlap': false,
     },
     paint: { 'text-color': '#E3EAED', 'text-halo-color': '#101D26', 'text-halo-width': 1.15 },
   })
@@ -253,6 +308,12 @@ function ensureLayers(map, recipe = {}) {
   if (map.getLayer('sectors-3d')) {
     map.setLayoutProperty('sectors-3d', 'visibility', vis(three))
   }
+  if (map.getLayer('sectors')) {
+    map.setLayerZoomRange('sectors', 10, three ? 15 : 24)
+  }
+  if (map.getLayer('sectors-line')) {
+    map.setLayerZoomRange('sectors-line', 10, three ? 15 : 24)
+  }
   if (map.getLayer('city-3d')) {
     map.setLayoutProperty('city-3d', 'visibility', vis(three))
   }
@@ -260,6 +321,7 @@ function ensureLayers(map, recipe = {}) {
 
 export function applyView(map, view) {
   map.__view = view
+  map.stop()
   if (view === '3d') {
     enhance3d(map)
     map.easeTo({ pitch: 64, bearing: -28, duration: 700 })
@@ -267,8 +329,11 @@ export function applyView(map, view) {
     try { map.setTerrain(null) } catch { /* */ }
     map.easeTo({ pitch: 0, bearing: 0, duration: 500 })
   }
-  if (map.getLayer('sectors-3d')) map.setLayoutProperty('sectors-3d', 'visibility', vis(view === '3d'))
-  if (map.getLayer('city-3d')) map.setLayoutProperty('city-3d', 'visibility', vis(view === '3d'))
+  const three = view === '3d'
+  if (map.getLayer('sectors-3d')) map.setLayoutProperty('sectors-3d', 'visibility', vis(three))
+  if (map.getLayer('sectors')) map.setLayerZoomRange('sectors', 10, three ? 15 : 24)
+  if (map.getLayer('sectors-line')) map.setLayerZoomRange('sectors-line', 10, three ? 15 : 24)
+  if (map.getLayer('city-3d')) map.setLayoutProperty('city-3d', 'visibility', vis(three))
 }
 
 export function dressAndPaint(map, geo, recipe, extras = {}) {
@@ -287,6 +352,7 @@ export function dressAndPaint(map, geo, recipe, extras = {}) {
     map.getSource('sectors').setData(recipe.sectorsLayer ? geo.sectorFc : emptyFc())
     map.getSource('spider').setData(recipe.spiderLayer ? geo.spiderFc : emptyFc())
     map.getSource('labels').setData(recipe.sectorsLayer ? geo.labelFc : emptyFc())
+    map.getSource('holes')?.setData(recipe.holesLayer && extras.holes ? extras.holes : emptyFc())
     setSelectedState(map, extras.selectedId || null)
     paintHeavy(map, { gh: extras.gh, dt: extras.dt, recipe }).catch((err) => {
       console.warn('deck.gl GPU layer failed', err)
@@ -337,10 +403,18 @@ export function setUserData(map, fc) {
 }
 
 export function queryHit(map, e) {
-  const layers = ['sectors-3d', 'sectors', 'sites'].filter((id) => map.getLayer(id))
+  const layers = ['sectors-3d', 'sectors', 'sites', 'sites-cluster'].filter((id) => map.getLayer(id))
   const hits = map.queryRenderedFeatures(e.point, { layers })
   const f = hits[0]
   if (!f) return null
+  if (f.properties.cluster) {
+    return {
+      cluster: true,
+      clusterId: f.properties.cluster_id,
+      lngLat: f.geometry.coordinates,
+      source: f.source,
+    }
+  }
   const featureId = f.id ?? f.properties.id
   return {
     siteId: f.properties.site_id || f.properties.id,

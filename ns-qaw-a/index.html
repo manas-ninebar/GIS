@@ -8,46 +8,56 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400..600&display=swap" />
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.css" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=6" />
 </head>
 <body>
-  <div id="map"></div>
-
-  <header class="brand glass">
-    <div class="u-mono">NineOne · Geo</div>
-    <strong>Tokyo RAN</strong>
-    <span id="counts">—</span>
+  <header class="dock top glass">
+    <div class="dock-row">
+      <div class="brand">
+        <div class="u-mono">NineOne · Geo</div>
+        <strong>Tokyo RAN</strong>
+        <span id="counts">—</span>
+      </div>
+      <label class="search">
+        <span class="u-mono">Find</span>
+        <input id="search" type="search" placeholder="SARF · ECGI · cell · eNB" autocomplete="off" />
+        <div class="typeahead" id="typeahead" hidden></div>
+      </label>
+      <button type="button" class="dock-btn" id="btn-rail" title="Filters (F)">Filters</button>
+      <button type="button" class="dock-btn" id="btn-copilot" title="Copilot (C)">Copilot</button>
+    </div>
+    <div class="dock-row tools-row">
+      <div class="toolbar" id="tools">
+        <button type="button" class="tool on" data-tool="pan">Pan</button>
+        <button type="button" class="tool" data-tool="ruler">Ruler</button>
+        <button type="button" class="tool" data-tool="radius">Radius</button>
+        <div class="seg" role="group" aria-label="View">
+          <button type="button" class="tool on" data-view="2d">2D</button>
+          <button type="button" class="tool" data-view="3d">3D</button>
+        </div>
+        <select id="basemap">
+          <option value="dark">Plan</option>
+          <option value="satellite">Satellite</option>
+          <option value="liberty">Street</option>
+          <option value="positron">Soft</option>
+        </select>
+      </div>
+      <details class="more">
+        <summary>More</summary>
+        <div class="more-menu glass">
+          <button type="button" id="btn-import">Import overlay</button>
+          <button type="button" id="btn-geojson">Download GeoJSON</button>
+          <button type="button" id="btn-kml">Download KML</button>
+          <button type="button" id="btn-shot">Snapshot PNG</button>
+        </div>
+      </details>
+      <input id="file-import" type="file" accept=".geojson,.json,.kml" hidden />
+    </div>
   </header>
 
-  <label class="search glass">
-    <span class="u-mono">Find</span>
-    <input id="search" type="search" placeholder="SARF · ECGI · cell · eNB" autocomplete="off" />
-    <div class="typeahead" id="typeahead" hidden></div>
-  </label>
-
-  <div class="toolbar glass" id="tools">
-    <button type="button" class="tool on" data-tool="pan">Pan</button>
-    <button type="button" class="tool" data-tool="ruler">Ruler</button>
-    <button type="button" class="tool" data-tool="radius">Radius</button>
-    <div class="seg" role="group" aria-label="View">
-      <button type="button" class="tool on" data-view="2d" title="Plan view — 3D off until it earns its place">2D</button>
-      <button type="button" class="tool" data-view="3d" title="Terrain, buildings, beams">3D</button>
-    </div>
-    <select id="basemap">
-      <option value="dark">Plan</option>
-      <option value="satellite">Satellite</option>
-      <option value="liberty">Street</option>
-      <option value="positron">Soft</option>
-    </select>
-    <button type="button" class="tool" id="btn-import">Import</button>
-    <button type="button" class="tool" id="btn-geojson">GeoJSON</button>
-    <button type="button" class="tool" id="btn-kml">KML</button>
-    <button type="button" class="tool" id="btn-shot">Snapshot</button>
-    <input id="file-import" type="file" accept=".geojson,.json,.kml" hidden />
-  </div>
-
-  <button type="button" class="fab glass" id="btn-rail" title="Filters (F)">Filters</button>
-  <button type="button" class="fab glass fab-right" id="btn-copilot" title="Copilot (C)">Copilot</button>
+  <div class="stage" id="stage">
+  <div id="map"></div>
+  <div class="chips" id="chips"></div>
 
   <aside class="drawer glass" id="rail" hidden>
     <header>
@@ -67,35 +77,37 @@
     </header>
     <div class="starters" id="starters"></div>
     <div class="log" id="log"></div>
+    <label class="keyrow">
+      <span class="u-mono">OpenAI</span>
+      <input id="openai-key" type="password" autocomplete="off" placeholder="sk-… stays in this browser" />
+    </label>
     <form class="composer" id="composer">
+      <button type="button" class="mic" id="btn-mic" title="Speak">mic</button>
       <input id="ask" type="text" placeholder="Ask or author a map…" autocomplete="off" />
       <button type="submit">Send</button>
     </form>
   </aside>
 
-  <div class="chips" id="chips"></div>
-  <div class="legend glass" aria-hidden="true">
-    <span><i class="swatch onair"></i>On-air</span>
-    <span><i class="swatch planned"></i>Planned</span>
-    <span><i class="swatch alarm"></i>Alarm</span>
-    <span><i class="swatch locked"></i>Locked</span>
-    <span><i class="swatch gh"></i>Groundhog GPU</span>
-    <span><i class="swatch dt"></i>Drive test GPU</span>
-  </div>
-  <div class="clock glass" id="clock">
-    <span class="u-mono">Clock</span>
-    <button type="button" id="clock-pause" disabled title="One shared clock — play/speed land when more than one timestamp exists">❚❚</button>
-    <span class="clock-speed" title="Speed. Disabled until a range exists.">1×</span>
-    <input id="clock-range" type="range" min="0" max="0" value="0" disabled />
-    <span id="clock-label">Snapshot</span>
-  </div>
-  <div class="hud glass" id="hud">—</div>
-  <div class="measure glass" id="measure" hidden></div>
   <article class="card glass" id="card" hidden></article>
+  <div class="measure glass" id="measure" hidden></div>
+  </div>
+
+  <footer class="dock bottom glass">
+    <span id="hud">WGS84</span>
+    <span class="legend">
+      <i class="swatch onair"></i>On-air
+      <i class="swatch planned"></i>Planned
+      <i class="swatch alarm"></i>Alarm
+      <i class="swatch locked"></i>Locked
+      <i class="swatch gh"></i>GH
+      <i class="swatch dt"></i>DT
+    </span>
+    <span class="u-mono" id="clock-label">Clock</span>
+  </footer>
 
   <script src="https://unpkg.com/maplibre-gl@5.6.2/dist/maplibre-gl.js"></script>
   <script src="https://unpkg.com/deck.gl@9.1.12/dist.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@turf/turf@7/turf.min.js"></script>
-  <script type="module" src="app.js"></script>
+  <script type="module" src="app.js?v=5"></script>
 </body>
 </html>
