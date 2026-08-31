@@ -144,7 +144,7 @@ function ensureSources(map) {
       clusterRadius: 52,
     })
   }
-  for (const id of ['sectors', 'spider', 'labels', 'holes', 'measure', 'user', 'probe']) {
+  for (const id of ['sectors', 'spider', 'labels', 'holes', 'measure', 'user', 'probe', 'planned']) {
     if (!map.getSource(id)) {
       map.addSource(id, { type: 'geojson', data: emptyFc(), promoteId: 'id' })
     }
@@ -216,6 +216,17 @@ function ensureLayers(map, recipe = {}) {
       ],
       'circle-stroke-color': '#E3EAED',
       'circle-opacity': 0.95,
+    },
+  })
+  addLayer(map, {
+    id: 'planned-ring', type: 'circle', source: 'planned',
+    paint: {
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 10, 15, 16],
+      'circle-color': '#9A7614',
+      'circle-opacity': 0.12,
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#D6AE45',
+      'circle-pitch-alignment': 'map',
     },
   })
   addLayer(map, {
@@ -363,6 +374,7 @@ export function dressAndPaint(map, geo, recipe, extras = {}) {
     map.getSource('spider').setData(recipe.spiderLayer ? geo.spiderFc : emptyFc())
     map.getSource('labels').setData(recipe.sectorsLayer ? geo.labelFc : emptyFc())
     map.getSource('holes')?.setData(recipe.holesLayer && extras.holes ? extras.holes : emptyFc())
+    map.getSource('planned')?.setData(recipe.plannedLayer && geo.plannedFc ? geo.plannedFc : emptyFc())
     setSelectedState(map, extras.selectedId || null)
     paintHeavy(map, { gh: extras.gh, dt: extras.dt, recipe }).catch((err) => {
       console.warn('deck.gl GPU layer failed', err)
@@ -418,7 +430,7 @@ export function setProbeData(map, fc) {
 }
 
 export function queryHit(map, e) {
-  const layers = ['sectors-3d', 'sectors', 'sites', 'sites-cluster'].filter((id) => map.getLayer(id))
+  const layers = ['sectors-3d', 'sectors', 'planned-ring', 'sites', 'sites-cluster'].filter((id) => map.getLayer(id))
   const hits = map.queryRenderedFeatures(e.point, { layers })
   const f = hits[0]
   if (!f) return null
@@ -443,11 +455,15 @@ export async function setBasemap(map, name, after) {
   detachDeck(map)
   const view = map.__view || '2d'
   if (name === 'satellite') map.setStyle(cinematicStyle())
+  else if (name === 'terrain') map.setStyle(cinematicStyle())
   else if (name === 'dark') map.setStyle(planStyle())
   else if (name === 'liberty') map.setStyle('https://tiles.openfreemap.org/styles/liberty')
   else map.setStyle('https://tiles.openfreemap.org/styles/positron')
   map.once('style.load', () => {
-    if (view === '3d') enhance3d(map)
+    if (view === '3d' || name === 'terrain') enhance3d(map)
+    if (name === 'terrain' && view !== '3d') {
+      try { map.setTerrain({ source: 'terrain', exaggeration: 1.15 }) } catch { /* */ }
+    }
     after()
   })
 }
@@ -455,6 +471,7 @@ export async function setBasemap(map, name, after) {
 export function visibleLayers(geo, recipe, userFc) {
   const layers = [{ name: 'sites', fc: geo.siteFc }]
   if (recipe.sectorsLayer) layers.push({ name: 'sectors', fc: geo.sectorFc })
+  if (recipe.plannedLayer && geo.plannedFc?.features?.length) layers.push({ name: 'planned', fc: geo.plannedFc })
   if (userFc?.features?.length) layers.push({ name: 'user', fc: userFc })
   return layers
 }

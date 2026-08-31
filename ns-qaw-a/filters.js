@@ -29,7 +29,10 @@ export function defaultRecipe() {
     holesLayer: false,
     ghContourLayer: false,
     vocLayer: false,
+    plannedLayer: true,
     pci: '',
+    onAirFrom: '',
+    onAirTo: '',
     height: [null, null],
     mechTilt: [null, null],
     hasCmAzimuth: true,
@@ -68,6 +71,12 @@ export function cellMatch(c, site, r) {
     const blob = [c.cell_id, v(c.ecgi), v(c.sarf_id), v(c.cell_name), site.site_id, v(site.enb_name), v(site.ems_server)]
       .join(' ').toLowerCase()
     if (!blob.includes(q)) return false
+  }
+  if (r.onAirFrom || r.onAirTo) {
+    const d = v(site.on_air_date)
+    if (!d) return false
+    if (r.onAirFrom && d < r.onAirFrom) return false
+    if (r.onAirTo && d > r.onAirTo) return false
   }
   return true
 }
@@ -112,6 +121,9 @@ export function chipList(r) {
   if (r.pci) chips.push({ key: 'pci', value: r.pci, label: `PCI ${r.pci}` })
   if (r.azimuthRange) chips.push({ key: 'az', value: r.azimuthRange, label: `az ${r.azimuthRange[0]}–${r.azimuthRange[1]}` })
   if (r.identity) chips.push({ key: 'identity', value: r.identity, label: r.identity })
+  if (r.onAirFrom) chips.push({ key: 'onAirFrom', value: r.onAirFrom, label: `on-air ≥ ${r.onAirFrom}` })
+  if (r.onAirTo) chips.push({ key: 'onAirTo', value: r.onAirTo, label: `on-air ≤ ${r.onAirTo}` })
+  if (r.plannedLayer === false) chips.push({ key: 'plannedLayer', value: false, label: 'planned rings off' })
   return chips
 }
 
@@ -124,6 +136,9 @@ export function dismissChip(r, chip) {
   else if (chip.key === 'pci') next.pci = ''
   else if (chip.key === 'az') next.azimuthRange = null
   else if (chip.key === 'identity') next.identity = ''
+  else if (chip.key === 'onAirFrom') next.onAirFrom = ''
+  else if (chip.key === 'onAirTo') next.onAirTo = ''
+  else if (chip.key === 'plannedLayer') next.plannedLayer = true
   return next
 }
 
@@ -155,7 +170,11 @@ export function renderFacets(el, inv, recipe, onChange) {
 
   const dated = inv.sites.filter((s) => v(s.on_air_date)).length
   html.push(`<div class="facet"><h3>On-air date</h3>
-    <p class="hint">${dated} sites have a commercial date. Cell-plan has no on-air column. Observation window: ${inv.clock?.t || '—'} ← ${inv.clock?.source || 'clock'}.</p>
+    <div class="range">
+      <label>from <input type="date" data-air="from" value="${recipe.onAirFrom || ''}" /></label>
+      <label>to <input type="date" data-air="to" value="${recipe.onAirTo || ''}" /></label>
+    </div>
+    <p class="hint">${dated} / ${inv.sites.length} sites have a commercial date. ${inv.envelope?.on_air_date_source || 'Cell-plan has no on-air column.'} Date filter matches nothing until a daily on-air file is ingested.</p>
   </div>`)
 
   html.push(`<div class="facet"><h3>Fault</h3><div class="facet-row">
@@ -165,6 +184,7 @@ export function renderFacets(el, inv, recipe, onChange) {
 
   const vocN = nPts(inv.voc)
   html.push(`<div class="facet"><h3>Layers</h3>
+    <label class="toggle"><input type="checkbox" data-layer="plannedLayer" ${recipe.plannedLayer ? 'checked' : ''}/> Planned sites · gold rings (cell-plan New / coming soon)</label>
     <label class="toggle"><input type="checkbox" data-layer="sectorsLayer" ${recipe.sectorsLayer ? 'checked' : ''}/> Sectors · HPBW lobes</label>
     <label class="toggle"><input type="checkbox" data-layer="spiderLayer" ${recipe.spiderLayer ? 'checked' : ''}/> Co-site spider · z≥14</label>
     <label class="toggle"><input type="checkbox" data-layer="holesLayer" ${recipe.holesLayer ? 'checked' : ''}/> Coverage holes · GH RSRP ≤ −105</label>
@@ -219,6 +239,14 @@ export function renderFacets(el, inv, recipe, onChange) {
       const t = [...recipe.mechTilt]
       t[Number(inp.dataset.t)] = inp.value === '' ? null : Number(inp.value)
       onChange({ ...recipe, mechTilt: t })
+    })
+  })
+  el.querySelectorAll('[data-air]').forEach((inp) => {
+    inp.addEventListener('change', () => {
+      const next = { ...recipe }
+      if (inp.dataset.air === 'from') next.onAirFrom = inp.value
+      else next.onAirTo = inp.value
+      onChange(next)
     })
   })
 }

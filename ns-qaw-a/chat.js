@@ -96,11 +96,12 @@ export function parseAsk(text, inv, selectedId) {
     return { type: 'recipe', recipe, narrate: 'Reset to on-air B3 macros.', fly: 'cluster' }
   }
 
-  if (/\bplanned\b/.test(t) && !/is this/.test(t)) {
+  if (/\bplanned\b|coming soon/.test(t) && !/is this/.test(t)) {
     const recipe = defaultRecipe()
     recipe.status = ['planned']
+    recipe.plannedLayer = true
     const n = inv.sites.filter((s) => v(s.status) === 'planned').length
-    return { type: 'recipe', recipe, narrate: `${n} planned rooftops from the cell plan.`, fly: 'planned' }
+    return { type: 'recipe', recipe, section: null, narrate: `${n} planned rooftops from the cell plan (siteType New) — gold rings. Not an ECGI-master coming-soon file.`, fly: 'planned' }
   }
 
   if (/drive test|show drive/.test(t)) {
@@ -204,7 +205,7 @@ export async function interpret(text, inv, selectedId) {
             role: 'system',
             content: `You author a Tokyo RAN map. Reply JSON only:
 {"type":"recipe"|"select"|"qa"|"help","recipe":{},"select":null,"fly":null,"narrate":""}
-recipe keys (omit to leave default): tech[], band[], siteType[], status[], inAlarm bool|null, view "2d"|"3d", sectorsLayer, spiderLayer, ghLayer, dtLayer, holesLayer, azimuthRange [lo,hi], pci string.
+recipe keys (omit to leave default): tech[], band[], siteType[], status[], inAlarm bool|null, view "2d"|"3d", sectorsLayer, spiderLayer, ghLayer, dtLayer, holesLayer, plannedLayer, azimuthRange [lo,hi], pci string, onAirFrom, onAirTo.
 fly: planned|alarms|select|dt|gh|cluster|null.
 Use only site ids from the digest. Never invent rooftops. If VOC has 0 geocoded points, say so. narrate one short sentence.`,
           },

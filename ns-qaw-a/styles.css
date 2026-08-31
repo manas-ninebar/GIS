@@ -197,6 +197,7 @@ button { cursor: pointer; }
 .swatch { width: 7px; height: 7px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 1px rgba(255,246,232,.18); }
 .swatch.onair { background: #0F4661; }
 .swatch.planned { background: #9A7614; }
+.swatch.coming { background: transparent; border: 2px solid #D6AE45; border-radius: 50%; box-shadow: none; }
 .swatch.alarm { background: #A9433A; }
 .swatch.locked { background: #7B8C96; }
 .swatch.gh { background: #D2761D; border-radius: 2px; }
