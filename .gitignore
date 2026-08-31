@@ -1,0 +1,63 @@
+# ---- raw datasets (never the instrument) ----
+data/
+
+# ---- office / export dumps ----
+*.docx
+*.pdf
+~$*
+
+# ---- scratch generators & diagram folders ----
+_*.py
+_diagrams/
+_diagrams_mz/
+
+# ---- other workspace HTML dumps (keep mapsheetzero.html) ----
+NineOne GIS Workspace.html
+NineOne_Telco_GIS_Map_and_Tech_Stack.html
+Telecom GIS Workspace.html
+
+# ---- secrets / env ----
+.env
+.env.*
+!.env.example
+*.pem
+credentials.json
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Node (if added later) ----
+node_modules/
+npm-debug.log*
+yarn-error.log*
+dist/
+.turbo/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- editor / local ----
+.idea/
+.vscode/
+.cursor/
+*.swp
+*.swo
+*~
+*.tmp
+*.bak
+*.log
+.cache/
+
+# ---- Office lock files ----
+.~lock.*
