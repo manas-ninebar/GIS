@@ -1,0 +1,26 @@
+{
+  "plan_rows": 75,
+  "sites_out": 25,
+  "cells_out": 75,
+  "decommissioned_locked": [
+    "TOK_003",
+    "TOK_004",
+    "TOK_009",
+    "TOK_017"
+  ],
+  "dropped_no_coords": 0,
+  "planned": 3,
+  "partial": 2,
+  "locked": 4,
+  "sites_in_alarm": 2,
+  "gh_points": 8503,
+  "gh_bytes": 102036,
+  "dt_points": 5235,
+  "dt_bytes": 62820,
+  "sukayat": {
+    "read": true,
+    "rows_scanned": 3475,
+    "open_kanto": 324,
+    "note": "No coordinates \u2014 chat index only, not map pins."
+  }
+}
