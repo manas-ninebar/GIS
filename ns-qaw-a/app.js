@@ -5,6 +5,7 @@ import { searchHits, measureDistance, measureRadius, layersToGeoJSON, layersToKm
 import { interpret, contextChips, getKey, setKey } from './chat.js'
 import { loadPacked, pickPoint, describePick } from './heavy.js'
 import { buildHoles } from './holes.js'
+import { tier1Candidates, monitoredIds, neighborLines } from './neighbors.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -13,6 +14,7 @@ const state = {
   recipe: defaultRecipe(),
   selected: null,
   section: null,
+  neighbors: null,
   tool: 'pan',
   measurePts: [],
   userFc: { type: 'FeatureCollection', features: [] },
@@ -46,18 +48,37 @@ function filtered() {
   return applyRecipe(state.inv, state.recipe)
 }
 
+/** Monitored neighbours (and the target) must survive the recipe filters — otherwise a
+ *  status/band filter hides the sector while its connector line still draws to it. */
+function withNeighbors(sites, cells, neighborIds) {
+  if (!state.neighbors) return { sites, cells }
+  const haveCells = new Set(cells.map((c) => c.cell_id))
+  const addCells = state.inv.cells.filter((c) => neighborIds.has(c.cell_id) && !haveCells.has(c.cell_id))
+  const wantSites = new Set([state.neighbors.targetId, ...addCells.map((c) => c.site_id)])
+  const haveSites = new Set(sites.map((s) => s.site_id))
+  const addSites = state.inv.sites.filter((s) => wantSites.has(s.site_id) && !haveSites.has(s.site_id))
+  return {
+    sites: addSites.length ? sites.concat(addSites) : sites,
+    cells: addCells.length ? cells.concat(addCells) : cells,
+  }
+}
+
 function paint() {
-  const { sites, cells } = filtered()
+  const neighborIds = monitoredIds(state.neighbors)
+  const base = filtered()
+  const { sites, cells } = withNeighbors(base.sites, base.cells, neighborIds)
   const bandPin = state.recipe.band.length === 1 ? state.recipe.band[0] : null
   const zoom = state.map?.getZoom?.() ?? 13
   const bounds = state.map?.getBounds?.() ?? null
-  state.geo = buildGeo(sites, cells, { bandPin, selectedId: state.selected, bounds, zoom })
+  state.geo = buildGeo(sites, cells, { bandPin, selectedId: state.selected, bounds, zoom, keepIds: neighborIds })
   if (state.map) {
     dressAndPaint(state.map, state.geo, state.recipe, {
       gh: state.heavy?.gh,
       dt: state.heavy?.dt,
       selectedId: state.selected,
       holes: state.holesFc,
+      neighborIds,
+      neighborLines: state.neighbors ? neighborLines(state.inv, state.neighbors.targetId, neighborIds) : null,
     })
   }
   const c = counts(state.inv, state.recipe)
@@ -134,14 +155,15 @@ function renderCard() {
       }).join('')}
     </table>
     ${alarms || ''}
+    ${state.neighbors?.targetId === site.site_id ? renderNeighborSection(state.neighbors) : ''}
     ${site.note ? `<div class="prov">${site.note}</div>` : ''}
     <div class="prov">${Number(v(site.lat)).toFixed(5)} N · ${Number(v(site.lng)).toFixed(5)} E · WGS84 ← cell-plan</div>
     <div class="prov">Observed ${state.inv.clock?.t || '—'} ← ${state.inv.clock?.source || 'clock'} · ${cells.length} cells · EPSG:4326</div>
     <div class="prov">Lobe is HPBW −3 dB contour × azimuth × mech+elec tilt. No MSI/.pattern in this ingest.</div>
-    <div class="prov">ECGI above is built as 440-11 + enbId + cellId from the cell plan ← ecgi-envelope, not read from a real ECGI master file in this ingest.</div>
+    <div class="prov">ECGI values above are generated from the cell plan's own eNB and cell IDs ← ecgi-envelope. This ingest has no real ECGI master file to read them from instead.</div>
     </div>
   `
-  $('card-x').onclick = () => { state.selected = null; paint(); renderStarters() }
+  $('card-x').onclick = () => { clearNeighbors(); state.selected = null; paint(); renderStarters() }
   el.querySelectorAll('[data-cell]').forEach((row) => {
     row.onclick = () => {
       const cid = row.dataset.cell
@@ -150,6 +172,23 @@ function renderCard() {
       }
     }
   })
+  el.querySelectorAll('[data-nb-x]').forEach((btn) => {
+    btn.onclick = () => toggleNeighborCell(btn.dataset.nbX)
+  })
+}
+
+function renderNeighborSection(nb) {
+  const ids = [...monitoredIds(nb)]
+  const rows = ids.map((id) => {
+    const c = state.inv.cells.find((x) => x.cell_id === id)
+    if (!c) return ''
+    const added = nb.added.has(id)
+    return `<div class="nb-row">${c.site_id} · ${v(c.cell_name)}${added ? ' <em>+added</em>' : ''}<button type="button" data-nb-x="${id}" aria-label="Remove">×</button></div>`
+  }).join('')
+  return `
+    <div class="prov">Tier-1 neighbours · ${ids.length} monitored (${nb.auto.size} auto-proposed within 1.2 km${nb.added.size ? ` · +${nb.added.size} added` : ''}${nb.removed.size ? ` · −${nb.removed.size} removed` : ''}) · click a sector on the map to add or remove it</div>
+    <div class="nb-list">${rows || '<div class="nb-row">None facing within range — add sectors by clicking them.</div>'}</div>
+  `
 }
 
 function cinematic() {
@@ -189,12 +228,56 @@ function flyBbox(b) {
 }
 
 function select(id) {
+  // Leaving the target site tears the overlay down with it — otherwise the dashed
+  // connectors linger with no card explaining them. Clearing state alone isn't enough:
+  // select() doesn't normally repaint, so the stale lines need an explicit paint().
+  const dropping = !!state.neighbors && state.neighbors.targetId !== id
+  if (dropping) clearNeighbors()
   state.selected = id
   if (state.map) setSelectedState(state.map, id)
+  if (dropping) paint()
   renderCard()
   recipeHash()
   renderStarters()
   if (id) flyToSite(id)
+}
+
+function clearNeighbors() {
+  if (!state.neighbors) return
+  state.neighbors = null
+  if (state.section === 'neighbors') state.section = null
+}
+
+function startNeighbors(siteId) {
+  if (!siteOf(siteId)) {
+    logMsg(`No site ${siteId} in this inventory.`)
+    return
+  }
+  const auto = tier1Candidates(state.inv, siteId)
+  state.neighbors = { targetId: siteId, auto: new Set(auto.map((c) => c.cellId)), added: new Set(), removed: new Set() }
+  state.section = 'neighbors'
+  state.selected = siteId
+  // The highlight rides on the sector polygons, so the layer has to be on.
+  state.recipe = { ...state.recipe, sectorsLayer: true }
+  paint()
+  renderStarters()
+  flyToSite(siteId)
+}
+
+function toggleNeighborCell(cellId) {
+  const n = state.neighbors
+  if (!n) return
+  const cell = state.inv.cells.find((c) => c.cell_id === cellId)
+  if (!cell || cell.site_id === n.targetId) return
+  if (n.auto.has(cellId)) {
+    if (n.removed.has(cellId)) n.removed.delete(cellId)
+    else n.removed.add(cellId)
+  } else if (n.added.has(cellId)) {
+    n.added.delete(cellId)
+  } else {
+    n.added.add(cellId)
+  }
+  paint()
 }
 
 function logMsg(text, who = 'bot') {
@@ -221,6 +304,7 @@ function applyIntent(intent) {
     const prevView = state.recipe.view
     const view = intent.recipe.view || prevView
     state.recipe = { ...defaultRecipe(), ...intent.recipe, view }
+    clearNeighbors()
     state.section = intent.section ?? null
     if (intent.select) state.selected = intent.select
     paint()
@@ -234,6 +318,8 @@ function applyIntent(intent) {
     else if (intent.fly === 'cluster') cinematic()
   } else if (intent.type === 'select') {
     select(intent.select ?? null)
+  } else if (intent.type === 'neighbors' && intent.siteId) {
+    startNeighbors(intent.siteId)
   } else if (intent.type === 'qa') {
     if (intent.select) state.selected = intent.select
     else if (intent.site?.site_id) state.selected = intent.site.site_id
@@ -407,6 +493,15 @@ function onMapClick(e) {
     })
     return
   }
+  if (state.section === 'neighbors' && hit?.cellId && (hit.source === 'sectors' || hit.source === 'neighbors')) {
+    // The target's own lobes aren't toggleable — fall through so the click still
+    // selects, rather than being swallowed into a no-op.
+    const cell = state.inv.cells.find((c) => c.cell_id === hit.cellId)
+    if (cell && cell.site_id !== state.neighbors?.targetId) {
+      toggleNeighborCell(hit.cellId)
+      return
+    }
+  }
   if (hit?.siteId) {
     setProbeData(state.map, null)
     select(hit.siteId)
@@ -494,7 +589,7 @@ async function boot() {
     if (e.key === '/') { e.preventDefault(); $('search').focus() }
     if (e.key === 'f' || e.key === 'F') toggle('rail')
     if (e.key === 'c' || e.key === 'C') toggle('copilot')
-    if (e.key === 'Escape') { state.selected = null; state.section = null; $('rail').hidden = true; $('copilot').hidden = true; $('measure').hidden = true; setProbeData(state.map, null); paint(); renderStarters() }
+    if (e.key === 'Escape') { clearNeighbors(); state.selected = null; state.section = null; $('rail').hidden = true; $('copilot').hidden = true; $('measure').hidden = true; setProbeData(state.map, null); paint(); renderStarters() }
   })
 }
 

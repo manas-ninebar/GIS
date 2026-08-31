@@ -70,7 +70,7 @@ function inBounds(lng, lat, b, pad = 0.04) {
   return lng >= west - pad && lng <= east + pad && lat >= south - pad && lat <= north + pad
 }
 
-export function buildGeo(sites, cells, { bandPin = null, selectedId = null, bounds = null, zoom = 13 } = {}) {
+export function buildGeo(sites, cells, { bandPin = null, selectedId = null, bounds = null, zoom = 13, keepIds = null } = {}) {
   const bySite = Object.fromEntries(sites.map((s) => [s.site_id, s]))
   const siteFc = { type: 'FeatureCollection', features: [] }
   const sectorFc = { type: 'FeatureCollection', features: [] }
@@ -99,12 +99,15 @@ export function buildGeo(sites, cells, { bandPin = null, selectedId = null, boun
   }
 
   if (!skipSectors) for (const c of cells) {
-    if (bandPin && v(c.band) !== bandPin) continue
+    // Explicitly monitored cells (Tier-1 neighbours) bypass the band pin and the
+    // viewport cull — a filter must not hide a sector we are drawing a connector to.
+    const pinned = keepIds?.has(c.cell_id)
+    if (!pinned && bandPin && v(c.band) !== bandPin) continue
     const site = bySite[c.site_id]
     if (!site) continue
     const lng0 = v(c.lng)
     const lat0 = v(c.lat)
-    if (cullSectors && !inBounds(lng0, lat0, bounds)) continue
+    if (!pinned && cullSectors && !inBounds(lng0, lat0, bounds)) continue
     const az = v(c.azimuth)
     const hpbw = v(c.hpbw) || 65
     const i = idxBySite[c.site_id] || 0

@@ -144,7 +144,7 @@ function ensureSources(map) {
       clusterRadius: 52,
     })
   }
-  for (const id of ['sectors', 'spider', 'labels', 'holes', 'measure', 'user', 'probe']) {
+  for (const id of ['sectors', 'spider', 'labels', 'holes', 'measure', 'user', 'probe', 'neighbors']) {
     if (!map.getSource(id)) {
       map.addSource(id, { type: 'geojson', data: emptyFc(), promoteId: 'id' })
     }
@@ -236,6 +236,7 @@ function ensureLayers(map, recipe = {}) {
       'fill-opacity': [
         'case',
         ['boolean', ['feature-state', 'selected'], false], 0.55,
+        ['boolean', ['feature-state', 'neighbor'], false], 0.5,
         ['boolean', ['feature-state', 'hover'], false], 0.38,
         0.2,
       ],
@@ -245,10 +246,14 @@ function ensureLayers(map, recipe = {}) {
     id: 'sectors-line', type: 'line', source: 'sectors',
     minzoom: 10,
     paint: {
-      'line-color': ['get', 'color'],
-      'line-width': 1.15,
-      'line-opacity': 0.72,
+      'line-color': ['case', ['boolean', ['feature-state', 'neighbor'], false], '#EE9A3B', ['get', 'color']],
+      'line-width': ['case', ['boolean', ['feature-state', 'neighbor'], false], 2.4, 1.15],
+      'line-opacity': 0.85,
     },
+  })
+  addLayer(map, {
+    id: 'neighbors-line', type: 'line', source: 'neighbors',
+    paint: { 'line-color': '#EE9A3B', 'line-width': 2, 'line-dasharray': [2, 1.4], 'line-opacity': 0.85 },
   })
   // 3D beam z>15 only when 3D view has earned its place.
   addLayer(map, {
@@ -346,12 +351,29 @@ export function applyView(map, view) {
   if (map.getLayer('city-3d')) map.setLayoutProperty('city-3d', 'visibility', vis(three))
 }
 
+let paintSeq = 0
+
 export function dressAndPaint(map, geo, recipe, extras = {}) {
+  const seq = ++paintSeq
   if (!map.isStyleLoaded()) {
-    map.once('load', () => dressAndPaint(map, geo, recipe, extras))
-    map.once('idle', () => {
-      if (!map.getSource('sites')) dressAndPaint(map, geo, recipe, extras)
-    })
+    // 'load' fires once per map lifetime and has already fired by the time we get here,
+    // so a once('load') registered post-boot never fires. 'idle' re-fires whenever the
+    // map settles and 'style.load' covers setStyle, but neither is guaranteed if the map
+    // is already idle while isStyleLoaded() is transiently false — hence the timer too.
+    // seq drops superseded retries so stacked paints never re-apply stale geo.
+    let done = false
+    const retry = () => {
+      if (done) return
+      done = true
+      map.off('idle', retry)
+      map.off('style.load', retry)
+      clearTimeout(timer)
+      if (seq !== paintSeq) return
+      dressAndPaint(map, geo, recipe, extras)
+    }
+    const timer = setTimeout(retry, 300)
+    map.on('idle', retry)
+    map.on('style.load', retry)
     return
   }
   try {
@@ -363,7 +385,9 @@ export function dressAndPaint(map, geo, recipe, extras = {}) {
     map.getSource('spider').setData(recipe.spiderLayer ? geo.spiderFc : emptyFc())
     map.getSource('labels').setData(recipe.sectorsLayer ? geo.labelFc : emptyFc())
     map.getSource('holes')?.setData(recipe.holesLayer && extras.holes ? extras.holes : emptyFc())
+    map.getSource('neighbors')?.setData(extras.neighborLines || emptyFc())
     setSelectedState(map, extras.selectedId || null)
+    setNeighborState(map, extras.neighborIds)
     paintHeavy(map, { gh: extras.gh, dt: extras.dt, recipe }).catch((err) => {
       console.warn('deck.gl GPU layer failed', err)
     })
@@ -381,6 +405,22 @@ export function setSelectedState(map, id) {
   if (id && map.getSource('sites')) {
     try { map.setFeatureState({ source: 'sites', id }, { selected: true }) } catch { /* */ }
   }
+}
+
+export function setNeighborState(map, ids) {
+  const idSet = ids instanceof Set ? ids : new Set(ids || [])
+  const prev = map.__neighborIds || new Set()
+  if (map.getSource('sectors')) {
+    for (const id of prev) {
+      if (!idSet.has(id)) {
+        try { map.setFeatureState({ source: 'sectors', id }, { neighbor: false }) } catch { /* */ }
+      }
+    }
+    for (const id of idSet) {
+      try { map.setFeatureState({ source: 'sectors', id }, { neighbor: true }) } catch { /* */ }
+    }
+  }
+  map.__neighborIds = idSet
 }
 
 function bindHover(map) {
@@ -418,7 +458,7 @@ export function setProbeData(map, fc) {
 }
 
 export function queryHit(map, e) {
-  const layers = ['sectors-3d', 'sectors', 'sites', 'sites-cluster'].filter((id) => map.getLayer(id))
+  const layers = ['neighbors-line', 'sectors-3d', 'sectors', 'sites', 'sites-cluster'].filter((id) => map.getLayer(id))
   const hits = map.queryRenderedFeatures(e.point, { layers })
   const f = hits[0]
   if (!f) return null
@@ -432,7 +472,8 @@ export function queryHit(map, e) {
   }
   const featureId = f.id ?? f.properties.id
   return {
-    siteId: f.properties.site_id || f.properties.id,
+    // A connector line carries only the cell id — it must not masquerade as a site id.
+    siteId: f.source === 'neighbors' ? null : (f.properties.site_id || f.properties.id),
     cellId: f.properties.id,
     source: f.source,
     featureId,
