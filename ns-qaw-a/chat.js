@@ -191,7 +191,7 @@ export function parseAsk(text, inv, selectedId) {
     return { type: 'select', select: siteFromText.site_id, narrate: `Flew to ${siteFromText.site_id}.`, fly: 'select' }
   }
 
-  return { type: 'help', narrate: 'I can show planned sites, alarms, drive test, Groundhog, 2D/3D, or fly to a TOK_ id. Ask in those terms — or paste an OpenAI key to author any recipe.' }
+  return { type: 'help', narrate: 'I can show planned sites, alarms, drive test, Groundhog, coverage holes, Tier-1 neighbours for a site, 2D/3D, or fly to a TOK_ id. Ask in those terms — or paste an OpenAI key to author any recipe.' }
 }
 
 export async function interpret(text, inv, selectedId) {
@@ -211,9 +211,10 @@ export async function interpret(text, inv, selectedId) {
           {
             role: 'system',
             content: `You author a Tokyo RAN map. Reply JSON only:
-{"type":"recipe"|"select"|"qa"|"help","recipe":{},"select":null,"fly":null,"narrate":""}
-recipe keys (omit to leave default): tech[], band[], siteType[], status[], inAlarm bool|null, view "2d"|"3d", sectorsLayer, spiderLayer, ghLayer, dtLayer, holesLayer, azimuthRange [lo,hi], pci string.
+{"type":"recipe"|"select"|"qa"|"neighbors"|"help","recipe":{},"select":null,"siteId":null,"fly":null,"narrate":""}
+recipe keys (omit to leave default): tech[], band[], siteType[], status[], inAlarm bool|null, view "2d"|"3d", sectorsLayer, spiderLayer, ghLayer, dtLayer, holesLayer, ghContourLayer, azimuthRange [lo,hi], pci string.
 fly: planned|alarms|select|dt|gh|cluster|null.
+type "neighbors" shows Tier-1 facing neighbours for one site — set siteId to that site id (required). Use it for asks like "tier-1 neighbours for TOK_001" or "show neighbours".
 Use only site ids from the digest. Never invent rooftops. If VOC has 0 geocoded points, say so. narrate one short sentence.`,
           },
           { role: 'user', content: JSON.stringify({ ask: text, digest: digest(inv, selectedId) }) },

@@ -351,12 +351,29 @@ export function applyView(map, view) {
   if (map.getLayer('city-3d')) map.setLayoutProperty('city-3d', 'visibility', vis(three))
 }
 
+let paintSeq = 0
+
 export function dressAndPaint(map, geo, recipe, extras = {}) {
+  const seq = ++paintSeq
   if (!map.isStyleLoaded()) {
-    // Same fix as paintHeavy in heavy.js: 'load' fires once per map lifetime and has
-    // already fired by the time we get here, so a once('load', retry) registered post-boot
-    // never fires. 'idle' re-fires every time the map settles, so it actually retries.
-    map.once('idle', () => dressAndPaint(map, geo, recipe, extras))
+    // 'load' fires once per map lifetime and has already fired by the time we get here,
+    // so a once('load') registered post-boot never fires. 'idle' re-fires whenever the
+    // map settles and 'style.load' covers setStyle, but neither is guaranteed if the map
+    // is already idle while isStyleLoaded() is transiently false — hence the timer too.
+    // seq drops superseded retries so stacked paints never re-apply stale geo.
+    let done = false
+    const retry = () => {
+      if (done) return
+      done = true
+      map.off('idle', retry)
+      map.off('style.load', retry)
+      clearTimeout(timer)
+      if (seq !== paintSeq) return
+      dressAndPaint(map, geo, recipe, extras)
+    }
+    const timer = setTimeout(retry, 300)
+    map.on('idle', retry)
+    map.on('style.load', retry)
     return
   }
   try {
@@ -441,7 +458,7 @@ export function setProbeData(map, fc) {
 }
 
 export function queryHit(map, e) {
-  const layers = ['sectors-3d', 'sectors', 'sites', 'sites-cluster'].filter((id) => map.getLayer(id))
+  const layers = ['neighbors-line', 'sectors-3d', 'sectors', 'sites', 'sites-cluster'].filter((id) => map.getLayer(id))
   const hits = map.queryRenderedFeatures(e.point, { layers })
   const f = hits[0]
   if (!f) return null
@@ -455,7 +472,8 @@ export function queryHit(map, e) {
   }
   const featureId = f.id ?? f.properties.id
   return {
-    siteId: f.properties.site_id || f.properties.id,
+    // A connector line carries only the cell id — it must not masquerade as a site id.
+    siteId: f.source === 'neighbors' ? null : (f.properties.site_id || f.properties.id),
     cellId: f.properties.id,
     source: f.source,
     featureId,
