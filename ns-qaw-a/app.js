@@ -1,9 +1,9 @@
 import { v, buildGeo } from './lobes.js'
 import { defaultRecipe, applyRecipe, counts, chipList, dismissChip, renderFacets } from './filters.js'
-import { createMap, dressAndPaint, setMeasureData, setUserData, queryHit, setBasemap, visibleLayers, applyView, setSelectedState } from './map.js'
+import { createMap, dressAndPaint, setMeasureData, setUserData, setProbeData, queryHit, setBasemap, visibleLayers, applyView, setSelectedState } from './map.js'
 import { searchHits, measureDistance, measureRadius, layersToGeoJSON, layersToKml, download, parseImport, snapshotCanvas, downloadPng } from './tools.js'
-import { interpret, starters, getKey, setKey } from './chat.js'
-import { loadPacked } from './heavy.js'
+import { interpret, contextChips, getKey, setKey } from './chat.js'
+import { loadPacked, pickPoint, describePick } from './heavy.js'
 import { buildHoles } from './holes.js'
 
 const $ = (id) => document.getElementById(id)
@@ -12,6 +12,7 @@ const state = {
   inv: null,
   recipe: defaultRecipe(),
   selected: null,
+  section: null,
   tool: 'pan',
   measurePts: [],
   userFc: { type: 'FeatureCollection', features: [] },
@@ -51,9 +52,6 @@ function paint() {
   const zoom = state.map?.getZoom?.() ?? 13
   const bounds = state.map?.getBounds?.() ?? null
   state.geo = buildGeo(sites, cells, { bandPin, selectedId: state.selected, bounds, zoom })
-  if (state.recipe.holesLayer && state.heavy?.gh && !state.holesFc) {
-    state.holesFc = buildHoles(state.heavy.gh)
-  }
   if (state.map) {
     dressAndPaint(state.map, state.geo, state.recipe, {
       gh: state.heavy?.gh,
@@ -88,6 +86,14 @@ function renderChips() {
   })
 }
 
+function renderStarters() {
+  const chips = contextChips({ section: state.section, selected: state.selected, inv: state.inv })
+  $('starters').innerHTML = chips.map((s) => `<button type="button" class="starter">${s}</button>`).join('')
+  $('starters').querySelectorAll('button').forEach((b) => {
+    b.onclick = () => ask(b.textContent)
+  })
+}
+
 function siteOf(id) {
   return state.inv.sites.find((s) => s.site_id === id)
 }
@@ -119,12 +125,12 @@ function renderCard() {
       <tr><th>Alarms</th><td>${site.alarm_summary?.count || 0} · ${site.alarm_summary?.highest || '—'}</td></tr>
     </table>
     <table>
-      <tr><th>Cell</th><th>PCI</th><th>Az</th><th>HPBW</th><th>Tilt</th></tr>
+      <tr><th>Cell</th><th>ECGI</th><th>PCI</th><th>Az</th><th>HPBW</th><th>Tilt</th></tr>
       ${cells.map((c) => {
         const mech = v(c.mech_tilt)
         const elec = v(c.elec_tilt)
         const tilt = `${mech ?? '—'}°/${elec ?? '—'}°`
-        return `<tr class="row-hit" data-cell="${c.cell_id}"><td>${v(c.cell_name)}</td><td>${v(c.pci)}</td><td>${v(c.azimuth)}°</td><td>${v(c.hpbw) || 65}°</td><td>${tilt}</td></tr>`
+        return `<tr class="row-hit" data-cell="${c.cell_id}"><td>${v(c.cell_name)}</td><td>${v(c.ecgi)}</td><td>${v(c.pci)}</td><td>${v(c.azimuth)}°</td><td>${v(c.hpbw) || 65}°</td><td>${tilt}</td></tr>`
       }).join('')}
     </table>
     ${alarms || ''}
@@ -132,9 +138,10 @@ function renderCard() {
     <div class="prov">${Number(v(site.lat)).toFixed(5)} N · ${Number(v(site.lng)).toFixed(5)} E · WGS84 ← cell-plan</div>
     <div class="prov">Observed ${state.inv.clock?.t || '—'} ← ${state.inv.clock?.source || 'clock'} · ${cells.length} cells · EPSG:4326</div>
     <div class="prov">Lobe is HPBW −3 dB contour × azimuth × mech+elec tilt. No MSI/.pattern in this ingest.</div>
+    <div class="prov">ECGI above is built as 440-11 + enbId + cellId from the cell plan ← ecgi-envelope, not read from a real ECGI master file in this ingest.</div>
     </div>
   `
-  $('card-x').onclick = () => { state.selected = null; paint() }
+  $('card-x').onclick = () => { state.selected = null; paint(); renderStarters() }
   el.querySelectorAll('[data-cell]').forEach((row) => {
     row.onclick = () => {
       const cid = row.dataset.cell
@@ -186,6 +193,7 @@ function select(id) {
   if (state.map) setSelectedState(state.map, id)
   renderCard()
   recipeHash()
+  renderStarters()
   if (id) flyToSite(id)
 }
 
@@ -213,6 +221,7 @@ function applyIntent(intent) {
     const prevView = state.recipe.view
     const view = intent.recipe.view || prevView
     state.recipe = { ...defaultRecipe(), ...intent.recipe, view }
+    state.section = intent.section ?? null
     if (intent.select) state.selected = intent.select
     paint()
     document.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === state.recipe.view))
@@ -223,8 +232,8 @@ function applyIntent(intent) {
     else if (intent.fly === 'dt') flyBbox(state.heavy?.dt?.bbox || state.inv.drive_test?.bbox)
     else if (intent.fly === 'gh') flyBbox(state.heavy?.gh?.bbox || state.inv.groundhog?.bbox)
     else if (intent.fly === 'cluster') cinematic()
-  } else if (intent.type === 'select' && intent.select) {
-    select(intent.select)
+  } else if (intent.type === 'select') {
+    select(intent.select ?? null)
   } else if (intent.type === 'qa') {
     if (intent.select) state.selected = intent.select
     else if (intent.site?.site_id) state.selected = intent.site.site_id
@@ -235,6 +244,7 @@ function applyIntent(intent) {
     logMsg(intent.narrate)
     speak(intent.narrate)
   }
+  renderStarters()
   placeCard()
 }
 
@@ -329,6 +339,7 @@ function bindTools() {
       document.querySelectorAll('.tool[data-tool]').forEach((b) => b.classList.toggle('on', b === btn))
       $('measure').hidden = true
       setMeasureData(state.map, null)
+      setProbeData(state.map, null)
     })
   })
   $('basemap').addEventListener('change', () => {
@@ -396,7 +407,20 @@ function onMapClick(e) {
     })
     return
   }
-  select(hit?.siteId || null)
+  if (hit?.siteId) {
+    setProbeData(state.map, null)
+    select(hit.siteId)
+    return
+  }
+  const desc = describePick(pickPoint(state.map, e.point), state.heavy)
+  if (desc) {
+    setProbeData(state.map, { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Point', coordinates: [desc.lng, desc.lat] } }] })
+    $('measure').hidden = false
+    $('measure').textContent = `${desc.kind} · ${desc.rsrp.toFixed(1)} dBm · ${desc.lat.toFixed(5)} N ${desc.lng.toFixed(5)} E ← ${desc.source}`
+    return
+  }
+  setProbeData(state.map, null)
+  select(null)
 }
 
 async function boot() {
@@ -407,6 +431,7 @@ async function boot() {
     loadPacked(inv.drive_test?.file ? `./${inv.drive_test.file}` : './dt.bin'),
   ])
   state.heavy = { gh, dt }
+  state.holesFc = buildHoles(gh)
   const cam = loadHash()
   document.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === state.recipe.view))
   let booted = false
@@ -427,6 +452,7 @@ async function boot() {
     }
     $('hud').textContent = `${inv.crs || 'EPSG:4326'} · WGS84`
     logMsg(`<b>Instrument, not catalogue.</b> MapLibre · deck.gl GPU · one clock. ${c.sites} rooftops · ${c.gh.toLocaleString()} GH samples · ${c.dt.toLocaleString()} DT samples. Datum WGS84. 2D until 3D earns its place.`)
+    renderStarters()
   }
   state.map = createMap($('map'), { view: state.recipe.view, onLoad: finish })
   window.__map = state.map
@@ -449,10 +475,6 @@ async function boot() {
   bindVoice()
   $('openai-key').value = getKey()
   $('openai-key').addEventListener('change', () => setKey($('openai-key').value))
-  $('starters').innerHTML = starters().map((s) => `<button type="button" class="starter">${s}</button>`).join('')
-  $('starters').querySelectorAll('button').forEach((b) => {
-    b.onclick = () => ask(b.textContent)
-  })
   $('composer').addEventListener('submit', (e) => {
     e.preventDefault()
     const q = $('ask').value.trim()
@@ -472,7 +494,7 @@ async function boot() {
     if (e.key === '/') { e.preventDefault(); $('search').focus() }
     if (e.key === 'f' || e.key === 'F') toggle('rail')
     if (e.key === 'c' || e.key === 'C') toggle('copilot')
-    if (e.key === 'Escape') { state.selected = null; $('rail').hidden = true; $('copilot').hidden = true; paint() }
+    if (e.key === 'Escape') { state.selected = null; state.section = null; $('rail').hidden = true; $('copilot').hidden = true; $('measure').hidden = true; setProbeData(state.map, null); paint(); renderStarters() }
   })
 }
 

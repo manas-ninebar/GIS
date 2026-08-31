@@ -27,6 +27,7 @@ export function defaultRecipe() {
     ghLayer: true,
     dtLayer: true,
     holesLayer: false,
+    ghContourLayer: false,
     vocLayer: false,
     pci: '',
     height: [null, null],
@@ -168,6 +169,7 @@ export function renderFacets(el, inv, recipe, onChange) {
     <label class="toggle"><input type="checkbox" data-layer="spiderLayer" ${recipe.spiderLayer ? 'checked' : ''}/> Co-site spider · z≥14</label>
     <label class="toggle"><input type="checkbox" data-layer="holesLayer" ${recipe.holesLayer ? 'checked' : ''}/> Coverage holes · GH RSRP ≤ −105</label>
     <label class="toggle"><input type="checkbox" data-layer="ghLayer" ${recipe.ghLayer ? 'checked' : ''}/> Groundhog · ${nPts(inv.groundhog).toLocaleString()} samples ← gh.bin</label>
+    <label class="toggle"><input type="checkbox" data-layer="ghContourLayer" ${recipe.ghContourLayer ? 'checked' : ''}/> Groundhog contour · RSRP bands</label>
     <label class="toggle"><input type="checkbox" data-layer="dtLayer" ${recipe.dtLayer ? 'checked' : ''}/> Drive test · ${nPts(inv.drive_test).toLocaleString()} samples ← dt.bin</label>
     <label class="toggle"><input type="checkbox" data-layer="vocLayer" ${recipe.vocLayer ? 'checked' : ''}/> VOC · ${vocN} geocoded</label>
     <p class="hint">Sectors: dot z&lt;10 · −3 dB wedge z10–15 · 3D beam z&gt;15 in 3D. Co-site: band radial offset, spider z≥14, one band via Band filter. CRS ${inv.crs || 'EPSG:4326'} / WGS84. Clock is one snapshot — GH and DT are the geolocated samples at that instant. ${EMPTY_REASON.VOC}</p>
