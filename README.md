@@ -200,10 +200,12 @@ From this repo:
 
 ```bash
 cd ns-qaw-a
-python -m http.server 8765
+python serve.py
 ```
 
 Open [http://127.0.0.1:8765/](http://127.0.0.1:8765/).
+
+`serve.py` serves the static files **and** proxies Copilot's OpenAI fallback at `/api/chat`. Plain `python -m http.server 8765` also works for browsing the map, but the Copilot key field will fail with a 404 on that server — use `serve.py` if you want the OpenAI fallback to work.
 
 Do **not** open `index.html` as a `file://` URL — ES modules and `fetch('./inventory.json')` need a local server.
 
@@ -219,7 +221,7 @@ sequenceDiagram
   participant Server as HTTP server
   participant Browser
 
-  You->>Server: cd ns-qaw-a && python -m http.server 8765
+  You->>Server: cd ns-qaw-a && python serve.py
   You->>Browser: open http://127.0.0.1:8765/
   Browser->>Server: GET index.html, app.js, inventory.json, gh.bin, dt.bin
   Browser->>Browser: MapLibre paints 25 sites and HPBW lobes

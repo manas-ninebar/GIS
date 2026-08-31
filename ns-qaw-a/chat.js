@@ -1,18 +1,20 @@
 import { v } from './lobes.js'
 import { defaultRecipe, nPts } from './filters.js'
 
-const STARTERS = [
-  'show planned sites',
-  'macros in alarm',
-  'sectors facing east on TOK_001',
-  'show drive test',
-  'what alarms?',
-]
-
 const KEY = 'n1_openai_key'
 
-export function starters() {
-  return STARTERS
+/** Recommended chips for the current context — not a fixed list. A section (gh/dt/holes)
+ *  surfaces next-actions for that section; a selection adds site actions. */
+export function contextChips({ section, selected, inv } = {}) {
+  const chips = []
+  if (section === 'gh') chips.push('coverage holes', 'show drive test', 'back to overview')
+  else if (section === 'dt') chips.push('show groundhog', 'back to overview')
+  else if (section === 'holes') chips.push('show groundhog', 'back to overview')
+  else chips.push('show planned sites', 'macros in alarm', 'show drive test', 'show groundhog')
+  if (selected && inv?.sites?.some((s) => s.site_id === selected)) {
+    chips.push(`what alarms on ${selected}`, 'clear selection')
+  }
+  return chips
 }
 
 export function getKey() {
@@ -78,6 +80,15 @@ export function parseAsk(text, inv, selectedId) {
     return { type: 'recipe', recipe, narrate: 'Plan view. 3D off.', fly: 'cluster' }
   }
 
+  if (/back to overview|exit section|clear section/.test(t)) {
+    const recipe = defaultRecipe()
+    return { type: 'recipe', recipe, section: null, narrate: 'Back to overview.', fly: 'cluster' }
+  }
+
+  if (/clear selection|deselect/.test(t)) {
+    return { type: 'select', select: null, narrate: 'Selection cleared.' }
+  }
+
   if (/^(clear|reset)\b/.test(t) || /on-air b3|clear to on-air/.test(t)) {
     const recipe = defaultRecipe()
     recipe.status = ['on-air']
@@ -95,20 +106,23 @@ export function parseAsk(text, inv, selectedId) {
   if (/drive test|show drive/.test(t)) {
     const recipe = defaultRecipe()
     recipe.dtLayer = true
-    return { type: 'recipe', recipe, narrate: `Drive-test layer — ${nPts(inv.drive_test).toLocaleString()} samples.`, fly: 'dt' }
+    recipe.ghLayer = false
+    return { type: 'recipe', recipe, section: 'dt', narrate: `Drive-test layer — ${nPts(inv.drive_test).toLocaleString()} samples.`, fly: 'dt' }
   }
 
   if (/groundhog|heatmap|rsrp layer/.test(t)) {
     const recipe = defaultRecipe()
     recipe.ghLayer = true
-    return { type: 'recipe', recipe, narrate: `Groundhog heatmap — ${nPts(inv.groundhog).toLocaleString()} samples.`, fly: 'gh' }
+    recipe.dtLayer = false
+    return { type: 'recipe', recipe, section: 'gh', narrate: `Groundhog heatmap — ${nPts(inv.groundhog).toLocaleString()} samples.`, fly: 'gh' }
   }
 
   if (/\bholes?\b|coverage hole/.test(t)) {
     const recipe = defaultRecipe()
     recipe.holesLayer = true
     recipe.ghLayer = true
-    return { type: 'recipe', recipe, narrate: 'Coverage holes from Groundhog RSRP ≤ −105 dBm.', fly: 'gh' }
+    recipe.dtLayer = false
+    return { type: 'recipe', recipe, section: 'holes', narrate: 'Coverage holes from Groundhog RSRP ≤ −105 dBm.', fly: 'gh' }
   }
 
   if (/\bin alarm\b|macros in alarm|sites in alarm/.test(t) && !/what/.test(t)) {

@@ -8,6 +8,14 @@ const COLOR_STOPS = [
   [-70, [111, 190, 226]],
 ]
 
+// Same bands the coverage-hole threshold uses (≤ −105 = hole). Isoband contour, not a heatmap blur.
+const CONTOUR_BANDS = [
+  { threshold: [-999, -105], color: [169, 67, 58, 150] },
+  { threshold: [-105, -95], color: [210, 118, 29, 140] },
+  { threshold: [-95, -85], color: [238, 154, 59, 120] },
+  { threshold: [-85, 999], color: [111, 190, 226, 100] },
+]
+
 function lerpColor(rsrp) {
   if (rsrp <= COLOR_STOPS[0][0]) return [...COLOR_STOPS[0][1], 200]
   if (rsrp >= COLOR_STOPS[COLOR_STOPS.length - 1][0]) return [...COLOR_STOPS[COLOR_STOPS.length - 1][1], 210]
@@ -122,7 +130,11 @@ function binaryLayer(n, positions, colors) {
 export async function paintHeavy(map, { gh, dt, recipe } = {}) {
   map.__heavy = { gh, dt, recipe }
   if (!map.isStyleLoaded()) {
-    map.once('load', () => paintHeavy(map, { gh, dt, recipe }))
+    // 'load' fires once per map lifetime and has already fired by the time we get
+    // here (setData() on the GeoJSON sources just above makes isStyleLoaded() go
+    // momentarily false while they reprocess) — 'idle' re-fires every time the map
+    // settles, so it's the one that actually retries.
+    map.once('idle', () => paintHeavy(map, { gh, dt, recipe }))
     return
   }
   let overlay
@@ -132,7 +144,7 @@ export async function paintHeavy(map, { gh, dt, recipe } = {}) {
     console.warn('deck.gl overlay failed', err)
     return
   }
-  const { ScatterplotLayer, HeatmapLayer, HexagonLayer } = deckApi()
+  const { ScatterplotLayer, HeatmapLayer, HexagonLayer, ContourLayer } = deckApi()
   const z = map.getZoom()
   const layers = []
   const loud = !recipe?.sectorsLayer
@@ -176,10 +188,27 @@ export async function paintHeavy(map, { gh, dt, recipe } = {}) {
         radiusUnits: 'pixels',
         getRadius: 3,
         radiusMinPixels: 1.4,
-        pickable: false,
+        pickable: true,
         parameters: { depthTest: false },
       }))
     }
+  }
+
+  if (recipe?.ghContourLayer && gh?.n && ContourLayer) {
+    layers.push(new ContourLayer({
+      id: 'gh-contour',
+      data: {
+        length: gh.n,
+        attributes: {
+          getPosition: { value: gh.positions, size: 3 },
+          getWeight: { value: gh.rsrp, size: 1 },
+        },
+      },
+      cellSize: 110,
+      aggregation: 'MEAN',
+      contours: CONTOUR_BANDS,
+      zOffset: 0.005,
+    }))
   }
 
   if (recipe?.dtLayer && dt?.n && ScatterplotLayer) {
@@ -189,10 +218,36 @@ export async function paintHeavy(map, { gh, dt, recipe } = {}) {
       radiusUnits: 'pixels',
       getRadius: z < 12 ? 2 : 3.2,
       radiusMinPixels: 1.2,
-      pickable: false,
+      pickable: true,
       parameters: { depthTest: false },
     }))
   }
 
   overlay.setProps({ layers })
+}
+
+/** Manual hit-test into the deck.gl layers. The overlay's own canvas has
+ *  pointer-events:none (MapLibre needs the drag/pan gestures), so picking
+ *  is driven from MapLibre's click handler instead of DOM events. */
+export function pickPoint(map, point) {
+  const overlay = map.__deck
+  if (!overlay?.pickObject) return null
+  try {
+    return overlay.pickObject({ x: point.x, y: point.y, radius: 6 })
+  } catch {
+    return null
+  }
+}
+
+/** Resolve a deck.gl pick result back to the RSRP sample it hit. */
+export function describePick(info, heavy) {
+  const idx = info?.index
+  if (idx == null || idx < 0) return null
+  if (info.layer?.id === 'gh-pts' && heavy?.gh?.n) {
+    return { kind: 'Groundhog', rsrp: heavy.gh.rsrp[idx], lng: heavy.gh.positions[idx * 3], lat: heavy.gh.positions[idx * 3 + 1], source: 'gh.bin' }
+  }
+  if (info.layer?.id === 'dt-pts' && heavy?.dt?.n) {
+    return { kind: 'Drive test', rsrp: heavy.dt.rsrp[idx], lng: heavy.dt.positions[idx * 3], lat: heavy.dt.positions[idx * 3 + 1], source: 'dt.bin' }
+  }
+  return null
 }

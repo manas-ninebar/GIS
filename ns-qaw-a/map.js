@@ -144,7 +144,7 @@ function ensureSources(map) {
       clusterRadius: 52,
     })
   }
-  for (const id of ['sectors', 'spider', 'labels', 'holes', 'measure', 'user']) {
+  for (const id of ['sectors', 'spider', 'labels', 'holes', 'measure', 'user', 'probe']) {
     if (!map.getSource(id)) {
       map.addSource(id, { type: 'geojson', data: emptyFc(), promoteId: 'id' })
     }
@@ -305,6 +305,16 @@ function ensureLayers(map, recipe = {}) {
     filter: ['==', ['geometry-type'], 'Point'],
     paint: { 'circle-color': '#4FBDB6', 'circle-radius': 5 },
   })
+  addLayer(map, {
+    id: 'probe-pt', type: 'circle', source: 'probe',
+    paint: {
+      'circle-radius': 7,
+      'circle-color': '#EE9A3B',
+      'circle-stroke-width': 2,
+      'circle-stroke-color': '#101D26',
+      'circle-pitch-alignment': 'map',
+    },
+  })
   if (map.getLayer('sectors-3d')) {
     map.setLayoutProperty('sectors-3d', 'visibility', vis(three))
   }
@@ -400,6 +410,11 @@ export function setMeasureData(map, fc) {
 export function setUserData(map, fc) {
   ensureSources(map)
   map.getSource('user')?.setData(fc || emptyFc())
+}
+
+export function setProbeData(map, fc) {
+  ensureSources(map)
+  map.getSource('probe')?.setData(fc || emptyFc())
 }
 
 export function queryHit(map, e) {
