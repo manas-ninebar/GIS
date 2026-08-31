@@ -8,6 +8,7 @@ export const EMPTY_REASON = {
   IDSC: '0 rooftops — ingest is MACRO only',
   ODSC: '0 rooftops — ingest is MACRO only',
   DAS: '0 rooftops — ingest is MACRO only',
+  VOC: '0 geocoded complaints — WISE/Sukayat VOC has no lat/lng in this TOK ingest',
 }
 
 export function defaultRecipe() {
@@ -17,6 +18,7 @@ export function defaultRecipe() {
     siteType: [],
     status: [],
     morphology: [],
+    carrier: [],
     inAlarm: null,
     serviceAffecting: null,
     view: '2d',
@@ -24,6 +26,8 @@ export function defaultRecipe() {
     spiderLayer: true,
     ghLayer: true,
     dtLayer: true,
+    holesLayer: false,
+    vocLayer: false,
     pci: '',
     height: [null, null],
     mechTilt: [null, null],
@@ -34,10 +38,11 @@ export function defaultRecipe() {
 }
 
 export function cellMatch(c, site, r) {
-  if (r.hasCmAzimuth && !c.has_cm_azimuth) return false
+  if (r.hasCmAzimuth === true && c.has_cm_azimuth === false) return false
   if (r.tech.length && !r.tech.includes(v(c.tech))) return false
   if (r.band.length && !r.band.includes(v(c.band))) return false
   if (r.siteType.length && !r.siteType.includes(v(c.site_type))) return false
+  if (r.carrier?.length && !r.carrier.includes(String(v(c.carrier)))) return false
   if (r.status.length && !r.status.includes(v(c.status))) return false
   if (r.morphology.length && !r.morphology.includes(v(site.morphology))) return false
   if (r.inAlarm === true && !c.in_alarm && !site.in_alarm) return false
@@ -98,6 +103,7 @@ export function chipList(r) {
   for (const t of r.tech) chips.push({ key: 'tech', value: t, label: t })
   for (const t of r.band) chips.push({ key: 'band', value: t, label: t })
   for (const t of r.siteType) chips.push({ key: 'siteType', value: t, label: t })
+  for (const t of r.carrier || []) chips.push({ key: 'carrier', value: t, label: `EARFCN ${t}` })
   for (const t of r.status) chips.push({ key: 'status', value: t, label: t })
   for (const t of r.morphology) chips.push({ key: 'morphology', value: t, label: t })
   if (r.inAlarm === true) chips.push({ key: 'inAlarm', value: true, label: 'in alarm' })
@@ -110,7 +116,7 @@ export function chipList(r) {
 
 export function dismissChip(r, chip) {
   const next = { ...r }
-  if (['tech', 'band', 'siteType', 'status', 'morphology'].includes(chip.key)) {
+  if (['tech', 'band', 'siteType', 'status', 'morphology', 'carrier'].includes(chip.key)) {
     next[chip.key] = r[chip.key].filter((x) => x !== chip.value)
   } else if (chip.key === 'inAlarm') next.inAlarm = null
   else if (chip.key === 'sa') next.serviceAffecting = null
@@ -136,22 +142,35 @@ export function renderFacets(el, inv, recipe, onChange) {
     html.push(`<div class="facet"><h3>${title}</h3><div class="facet-row">${rows}</div>${hint}</div>`)
   }
 
-  pills('Technology', 'tech', enums.tech, (val) => inv.cells.filter((c) => v(c.tech) === val).length && inv.sites.filter((s) => inv.cells.some((c) => c.site_id === s.site_id && v(c.tech) === val)).length)
+  pills('Technology', 'tech', enums.tech, (val) => new Set(inv.cells.filter((c) => v(c.tech) === val).map((c) => c.site_id)).size)
   pills('Band', 'band', enums.band.length ? enums.band : ['B3'], (val) => new Set(inv.cells.filter((c) => v(c.band) === val).map((c) => c.site_id)).size)
+  const carriers = [...new Set(inv.cells.map((c) => String(v(c.carrier) || '')).filter(Boolean))].sort()
+  if (carriers.length) {
+    pills('Carrier', 'carrier', carriers, (val) => new Set(inv.cells.filter((c) => String(v(c.carrier)) === val).map((c) => c.site_id)).size)
+  }
   pills('Site type', 'siteType', enums.site_type, (val) => inv.sites.filter((s) => v(s.site_type) === val).length)
   pills('Status', 'status', enums.status, (val) => inv.sites.filter((s) => v(s.status) === val).length)
   pills('Morphology', 'morphology', enums.morphology, (val) => inv.sites.filter((s) => v(s.morphology) === val).length)
+
+  const dated = inv.sites.filter((s) => v(s.on_air_date)).length
+  html.push(`<div class="facet"><h3>On-air date</h3>
+    <p class="hint">${dated} sites have a commercial date. Cell-plan has no on-air column. Observation window: ${inv.clock?.t || '—'} ← ${inv.clock?.source || 'clock'}.</p>
+  </div>`)
 
   html.push(`<div class="facet"><h3>Fault</h3><div class="facet-row">
     <button type="button" class="pill${recipe.inAlarm === true ? ' on' : ''}" data-key="inAlarm" data-val="true">in alarm<small> ${inv.sites.filter((s) => s.in_alarm).length}</small></button>
     <button type="button" class="pill${recipe.serviceAffecting === true ? ' on' : ''}" data-key="sa" data-val="true">service affecting</button>
   </div></div>`)
 
+  const vocN = nPts(inv.voc)
   html.push(`<div class="facet"><h3>Layers</h3>
     <label class="toggle"><input type="checkbox" data-layer="sectorsLayer" ${recipe.sectorsLayer ? 'checked' : ''}/> Sectors · HPBW lobes</label>
     <label class="toggle"><input type="checkbox" data-layer="spiderLayer" ${recipe.spiderLayer ? 'checked' : ''}/> Co-site spider · z≥14</label>
+    <label class="toggle"><input type="checkbox" data-layer="holesLayer" ${recipe.holesLayer ? 'checked' : ''}/> Coverage holes · GH RSRP ≤ −105</label>
     <label class="toggle"><input type="checkbox" data-layer="ghLayer" ${recipe.ghLayer ? 'checked' : ''}/> Groundhog · ${nPts(inv.groundhog).toLocaleString()} samples ← gh.bin</label>
     <label class="toggle"><input type="checkbox" data-layer="dtLayer" ${recipe.dtLayer ? 'checked' : ''}/> Drive test · ${nPts(inv.drive_test).toLocaleString()} samples ← dt.bin</label>
+    <label class="toggle"><input type="checkbox" data-layer="vocLayer" ${recipe.vocLayer ? 'checked' : ''}/> VOC · ${vocN} geocoded</label>
+    <p class="hint">Sectors: dot z&lt;10 · −3 dB wedge z10–15 · 3D beam z&gt;15 in 3D. Co-site: band radial offset, spider z≥14, one band via Band filter. CRS ${inv.crs || 'EPSG:4326'} / WGS84. Clock is one snapshot — GH and DT are the geolocated samples at that instant. ${EMPTY_REASON.VOC}</p>
   </div>`)
 
   html.push(`<div class="facet"><h3>PCI</h3><input class="pci-in" data-pci placeholder="exact PCI" value="${recipe.pci || ''}" /></div>`)

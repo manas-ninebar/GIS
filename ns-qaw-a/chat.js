@@ -9,13 +9,54 @@ const STARTERS = [
   'what alarms?',
 ]
 
+const KEY = 'n1_openai_key'
+
 export function starters() {
   return STARTERS
 }
 
+export function getKey() {
+  return (localStorage.getItem(KEY) || '').trim()
+}
+
+export function setKey(value) {
+  const v = (value || '').trim()
+  if (v) localStorage.setItem(KEY, v)
+  else localStorage.removeItem(KEY)
+}
+
 function findSite(inv, text) {
-  const u = text.toUpperCase()
-  return inv.sites.find((s) => u.includes(s.site_id)) || null
+  const u = (text || '').toUpperCase()
+  const hit = inv.sites.find((s) => u.includes(s.site_id))
+  if (hit) return hit
+  return inv.sites.find((s) => {
+    const sarf = String(v(s.sarf_id) || '').toUpperCase()
+    return sarf && u.includes(sarf)
+  }) || null
+}
+
+function digest(inv, selectedId) {
+  return {
+    clock: inv.clock,
+    selected: selectedId,
+    counts: { sites: inv.sites.length, cells: inv.cells.length },
+    sites: inv.sites.map((s) => ({
+      id: s.site_id,
+      status: v(s.status),
+      type: v(s.site_type),
+      alarm: !!s.in_alarm,
+      sarf: v(s.sarf_id),
+    })),
+    alarms: inv.sites.filter((s) => s.in_alarm).map((s) => ({
+      id: s.site_id,
+      problems: (s.alarms || []).map((a) => a.problem),
+    })),
+    layers: {
+      gh: nPts(inv.groundhog),
+      dt: nPts(inv.drive_test),
+      voc: nPts(inv.voc),
+    },
+  }
 }
 
 export function parseAsk(text, inv, selectedId) {
@@ -26,6 +67,17 @@ export function parseAsk(text, inv, selectedId) {
   const siteFromText = findSite(inv, raw)
   const site = siteFromText || inv.sites.find((s) => s.site_id === selectedId)
 
+  if (/\b3d\b|three.?d|terrain view/.test(t)) {
+    const recipe = defaultRecipe()
+    recipe.view = '3d'
+    return { type: 'recipe', recipe, narrate: '3D on — terrain, buildings, beams at street zoom.', fly: 'cluster' }
+  }
+  if (/\b2d\b|plan view|flat map/.test(t)) {
+    const recipe = defaultRecipe()
+    recipe.view = '2d'
+    return { type: 'recipe', recipe, narrate: 'Plan view. 3D off.', fly: 'cluster' }
+  }
+
   if (/^(clear|reset)\b/.test(t) || /on-air b3|clear to on-air/.test(t)) {
     const recipe = defaultRecipe()
     recipe.status = ['on-air']
@@ -33,51 +85,80 @@ export function parseAsk(text, inv, selectedId) {
     return { type: 'recipe', recipe, narrate: 'Reset to on-air B3 macros.', fly: 'cluster' }
   }
 
-  if (/planned/.test(t) && !/is this/.test(t)) {
+  if (/\bplanned\b/.test(t) && !/is this/.test(t)) {
     const recipe = defaultRecipe()
     recipe.status = ['planned']
-    return { type: 'recipe', recipe, narrate: 'New-Capacity / New-Coverage from the cell plan.', fly: 'planned' }
+    const n = inv.sites.filter((s) => v(s.status) === 'planned').length
+    return { type: 'recipe', recipe, narrate: `${n} planned rooftops from the cell plan.`, fly: 'planned' }
   }
 
   if (/drive test|show drive/.test(t)) {
     const recipe = defaultRecipe()
     recipe.dtLayer = true
-    return { type: 'recipe', recipe, narrate: `Drive-test GPU layer — ${nPts(inv.drive_test).toLocaleString()} samples.`, fly: 'dt' }
+    return { type: 'recipe', recipe, narrate: `Drive-test layer — ${nPts(inv.drive_test).toLocaleString()} samples.`, fly: 'dt' }
   }
 
   if (/groundhog|heatmap|rsrp layer/.test(t)) {
     const recipe = defaultRecipe()
     recipe.ghLayer = true
-    return { type: 'recipe', recipe, narrate: `Groundhog GPU heatmap — ${nPts(inv.groundhog).toLocaleString()} tiles.`, fly: 'gh' }
+    return { type: 'recipe', recipe, narrate: `Groundhog heatmap — ${nPts(inv.groundhog).toLocaleString()} samples.`, fly: 'gh' }
+  }
+
+  if (/\bholes?\b|coverage hole/.test(t)) {
+    const recipe = defaultRecipe()
+    recipe.holesLayer = true
+    recipe.ghLayer = true
+    return { type: 'recipe', recipe, narrate: 'Coverage holes from Groundhog RSRP ≤ −105 dBm.', fly: 'gh' }
   }
 
   if (/\bin alarm\b|macros in alarm|sites in alarm/.test(t) && !/what/.test(t)) {
     const recipe = defaultRecipe()
     recipe.inAlarm = true
-    return { type: 'recipe', recipe, narrate: 'TOK_NEW_02 VSWR cascade · TOK_NEW_05 fronthaul.', fly: 'alarms' }
+    return { type: 'recipe', recipe, narrate: 'Sites in alarm — TOK_NEW_02 VSWR, TOK_NEW_05 fronthaul.', fly: 'alarms' }
   }
 
-  if (/facing east/.test(t)) {
+  if (/facing east|point(?:ing)? east/.test(t)) {
     const recipe = defaultRecipe()
     recipe.azimuthRange = [45, 135]
     const sid = site?.site_id || 'TOK_001'
-    return { type: 'recipe', recipe, select: sid, narrate: `Azimuth 45–135° (east). ${sid}.`, fly: 'select' }
+    return { type: 'recipe', recipe, select: sid, narrate: `Sectors facing east (45–135°). ${sid}.`, fly: 'select' }
+  }
+  if (/facing west/.test(t)) {
+    const recipe = defaultRecipe()
+    recipe.azimuthRange = [225, 315]
+    const sid = site?.site_id || 'TOK_001'
+    return { type: 'recipe', recipe, select: sid, narrate: `Sectors facing west. ${sid}.`, fly: 'select' }
+  }
+  if (/facing north/.test(t)) {
+    const recipe = defaultRecipe()
+    recipe.azimuthRange = [315, 45]
+    const sid = site?.site_id || 'TOK_001'
+    return { type: 'recipe', recipe, select: sid, narrate: `Sectors facing north. ${sid}.`, fly: 'select' }
+  }
+  if (/facing south/.test(t)) {
+    const recipe = defaultRecipe()
+    recipe.azimuthRange = [135, 225]
+    const sid = site?.site_id || 'TOK_001'
+    return { type: 'recipe', recipe, select: sid, narrate: `Sectors facing south. ${sid}.`, fly: 'select' }
   }
 
   if (/what alarm|alarms\??$|root cause/.test(t)) {
-    return { type: 'qa', q: 'alarms', site, narrate: answerAlarms(site) }
+    return { type: 'qa', q: 'alarms', site, narrate: answerAlarms(site), select: site?.site_id, fly: site ? 'select' : null }
   }
   if (/\bems\b|which ems|ems\?/.test(t)) {
-    return { type: 'qa', q: 'ems', site, narrate: site ? `EMS ${v(site.ems_server)} ← cell-plan.` : 'Select a site first.' }
+    return { type: 'qa', q: 'ems', site, narrate: site ? `EMS ${v(site.ems_server)} ← cell-plan.` : 'Select a site first, or name one (TOK_001).' }
   }
-  if (/pci/.test(t)) {
+  if (/\bpci\b/.test(t) && (site || /sec\s*[123]/.test(t))) {
     return { type: 'qa', q: 'pci', site, narrate: answerPci(inv, site, t) }
   }
-  if (/azimuth/.test(t)) {
+  if (/azimuth/.test(t) && site) {
     return { type: 'qa', q: 'az', site, narrate: answerAz(inv, site) }
   }
   if (/is this planned|planned\?/.test(t)) {
     return { type: 'qa', q: 'planned', site, narrate: site ? `${site.site_id} is ${v(site.status)} (${v(site.site_type_plan)} ← cell-plan).` : 'Select a site first.' }
+  }
+  if (/voc|complaint/.test(t)) {
+    return { type: 'qa', q: 'voc', narrate: 'No geocoded VOC in this TOK ingest — WISE/Sukayat rows have no lat/lng, so nothing is drawn.' }
   }
   if (/how many|sukayat|kanto|open 5g/.test(t)) {
     const sx = inv.sukayat_index || {}
@@ -88,7 +169,48 @@ export function parseAsk(text, inv, selectedId) {
     return { type: 'select', select: siteFromText.site_id, narrate: `Flew to ${siteFromText.site_id}.`, fly: 'select' }
   }
 
-  return { type: 'help', narrate: 'I author filters or answer the selected site. Try a starter.' }
+  return { type: 'help', narrate: 'I can show planned sites, alarms, drive test, Groundhog, 2D/3D, or fly to a TOK_ id. Ask in those terms — or paste an OpenAI key to author any recipe.' }
+}
+
+export async function interpret(text, inv, selectedId) {
+  const local = parseAsk(text, inv, selectedId)
+  if (local.type !== 'help') return local
+  const key = getKey()
+  if (!key) return local
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-OpenAI-Key': key },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        temperature: 0,
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `You author a Tokyo RAN map. Reply JSON only:
+{"type":"recipe"|"select"|"qa"|"help","recipe":{},"select":null,"fly":null,"narrate":""}
+recipe keys (omit to leave default): tech[], band[], siteType[], status[], inAlarm bool|null, view "2d"|"3d", sectorsLayer, spiderLayer, ghLayer, dtLayer, holesLayer, azimuthRange [lo,hi], pci string.
+fly: planned|alarms|select|dt|gh|cluster|null.
+Use only site ids from the digest. Never invent rooftops. If VOC has 0 geocoded points, say so. narrate one short sentence.`,
+          },
+          { role: 'user', content: JSON.stringify({ ask: text, digest: digest(inv, selectedId) }) },
+        ],
+      }),
+    })
+    const data = await res.json()
+    if (!res.ok) {
+      const err = data.error?.message || data.error || res.statusText
+      return { type: 'help', narrate: `OpenAI: ${err}` }
+    }
+    const raw = data.choices?.[0]?.message?.content
+    const intent = JSON.parse(raw)
+    if (intent.recipe) intent.recipe = { ...defaultRecipe(), ...intent.recipe }
+    if (!intent.narrate) intent.narrate = 'Done.'
+    return intent
+  } catch (err) {
+    return { type: 'help', narrate: `Copilot could not reach OpenAI. Run python serve.py (not http.server). ${err.message || err}` }
+  }
 }
 
 function answerAlarms(site) {

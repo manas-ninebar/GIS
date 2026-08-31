@@ -17,12 +17,25 @@ function wrapPi(rel) {
   return rel
 }
 
-/** Offset origin a few metres so co-sited cells are honest (P3 radial). */
-export function offsetOrigin(lng, lat, azimuthDeg, index, meters = 7) {
-  const az = ((azimuthDeg + 18 * index) * Math.PI) / 180
-  const mLat = meters / 110540
-  const mLng = meters / (111320 * Math.cos((lat * Math.PI) / 180))
-  return [lng + Math.sin(az) * mLng, lat + Math.cos(az) * mLat]
+/** Radial band-offset stacking: same rooftop, different bands walk out along the beam. */
+export function offsetOrigin(lng, lat, azimuthDeg, { index = 0, band = 'B3' } = {}) {
+  const bandRank = { B1: 0, B3: 1, B7: 2, B8: 3, B28: 4, n78: 5 }
+  const radialM = 8 + (bandRank[band] ?? 1) * 6
+  const lateralM = index * 3.2
+  const az = (azimuthDeg * Math.PI) / 180
+  const mLat = 1 / 110540
+  const mLng = 1 / (111320 * Math.max(Math.cos((lat * Math.PI) / 180), 0.2))
+  const dN = radialM * Math.cos(az) - lateralM * Math.sin(az)
+  const dE = radialM * Math.sin(az) + lateralM * Math.cos(az)
+  return [lng + dE * mLng, lat + dN * mLat]
+}
+
+/** Ground reach from height + mechanical + electrical tilt. HPBW is the −3 dB contour width. */
+export function groundReachDeg(heightM, mechTilt, elecTilt) {
+  const h = heightM || 30
+  const tilt = Math.max(1.5, (mechTilt || 0) + (elecTilt || 0))
+  const metres = h / Math.tan((tilt * Math.PI) / 180)
+  return Math.min(0.011, Math.max(0.0015, metres / 111320))
 }
 
 export function lobePolygon(lng, lat, azimuthDeg, hpbwDeg, reachDeg) {
@@ -48,12 +61,24 @@ function statusColor(status, inAlarm) {
   return '#0F4661'
 }
 
-export function buildGeo(sites, cells, { bandPin = null, selectedId = null } = {}) {
+function inBounds(lng, lat, b, pad = 0.04) {
+  if (!b) return true
+  const west = b.getWest?.() ?? b[0]
+  const south = b.getSouth?.() ?? b[1]
+  const east = b.getEast?.() ?? b[2]
+  const north = b.getNorth?.() ?? b[3]
+  return lng >= west - pad && lng <= east + pad && lat >= south - pad && lat <= north + pad
+}
+
+export function buildGeo(sites, cells, { bandPin = null, selectedId = null, bounds = null, zoom = 13 } = {}) {
   const bySite = Object.fromEntries(sites.map((s) => [s.site_id, s]))
   const siteFc = { type: 'FeatureCollection', features: [] }
   const sectorFc = { type: 'FeatureCollection', features: [] }
   const spiderFc = { type: 'FeatureCollection', features: [] }
   const labelFc = { type: 'FeatureCollection', features: [] }
+  const skipSectors = zoom < 10
+  const cullSectors = !skipSectors && cells.length > 2500
+  const idxBySite = {}
 
   for (const s of sites) {
     const lng = v(s.lng)
@@ -73,20 +98,22 @@ export function buildGeo(sites, cells, { bandPin = null, selectedId = null } = {
     })
   }
 
-  const idxBySite = {}
-  for (const c of cells) {
+  if (!skipSectors) for (const c of cells) {
     if (bandPin && v(c.band) !== bandPin) continue
     const site = bySite[c.site_id]
     if (!site) continue
     const lng0 = v(c.lng)
     const lat0 = v(c.lat)
+    if (cullSectors && !inBounds(lng0, lat0, bounds)) continue
     const az = v(c.azimuth)
     const hpbw = v(c.hpbw) || 65
-    const i = (idxBySite[c.site_id] = (idxBySite[c.site_id] || 0) + 1)
-    const [lng, lat] = offsetOrigin(lng0, lat0, az, i)
-    const reach = 0.0038 + (v(c.height_m) || 30) * 0.00002
+    const i = idxBySite[c.site_id] || 0
+    idxBySite[c.site_id] = i + 1
+    const [lng, lat] = offsetOrigin(lng0, lat0, az, { index: i, band: v(c.band) })
+    const reach = groundReachDeg(v(c.height_m) || v(site.height_m), v(c.mech_tilt), v(c.elec_tilt))
     const color = statusColor(v(c.status), c.in_alarm)
     const selected = selectedId === c.site_id || selectedId === c.cell_id
+    const tilt = (v(c.mech_tilt) || 0) + (v(c.elec_tilt) || 0)
     sectorFc.features.push({
       type: 'Feature',
       id: c.cell_id,
@@ -100,7 +127,7 @@ export function buildGeo(sites, cells, { bandPin = null, selectedId = null } = {
         color,
         selected: selected ? 1 : 0,
         in_alarm: c.in_alarm ? 1 : 0,
-        beam_height_m: Math.max(88, (v(c.height_m) || 28) * 3.4),
+        beam_height_m: Math.max(40, (v(c.height_m) || 28) * Math.max(1.2, 4.2 - tilt * 0.12)),
       },
       geometry: { type: 'Polygon', coordinates: [lobePolygon(lng, lat, az, hpbw, reach)] },
     })

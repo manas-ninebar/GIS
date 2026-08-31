@@ -29,13 +29,14 @@ function lerpColor(rsrp) {
 
 export async function loadPacked(url) {
   const res = await fetch(url)
-  if (!res.ok) return { n: 0, positions: new Float32Array(0), colors: new Uint8Array(0), weights: new Float32Array(0), bbox: null }
+  if (!res.ok) return { n: 0, positions: new Float32Array(0), colors: new Uint8Array(0), weights: new Float32Array(0), rsrp: new Float32Array(0), bbox: null }
   const buf = await res.arrayBuffer()
   const src = new Float32Array(buf)
   const n = (src.length / 3) | 0
   const positions = new Float32Array(n * 3)
   const colors = new Uint8Array(n * 4)
   const weights = new Float32Array(n)
+  const rsrps = new Float32Array(n)
   let west = 180, south = 90, east = -180, north = -90
   for (let i = 0; i < n; i++) {
     const lng = src[i * 3]
@@ -44,6 +45,7 @@ export async function loadPacked(url) {
     positions[i * 3] = lng
     positions[i * 3 + 1] = lat
     positions[i * 3 + 2] = 0
+    rsrps[i] = rsrp
     const c = lerpColor(rsrp)
     colors[i * 4] = c[0]
     colors[i * 4 + 1] = c[1]
@@ -55,7 +57,7 @@ export async function loadPacked(url) {
     if (lat < south) south = lat
     if (lat > north) north = lat
   }
-  return { n, positions, colors, weights, bbox: n ? [west, south, east, north] : null }
+  return { n, positions, colors, weights, rsrp: rsrps, bbox: n ? [west, south, east, north] : null }
 }
 
 function deckApi() {
