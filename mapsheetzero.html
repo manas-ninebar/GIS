@@ -1,0 +1,638 @@
+<title>Map Sheet Zero</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400..600&display=swap">
+
+<style>
+  /* ---------- tokens: light (default, un-stamped) ---------- */
+  :root {
+    --paper:      #EAEDEE;
+    --surface:    #FBFCFC;
+    --surface-2:  #F1F4F5;
+    --ink:        #101D26;
+    --ink-2:      #4C5F6B;
+    --ink-3:      #7B8C96;
+    --rule:       #CBD5DA;
+    --rule-soft:  #DDE4E7;
+    --accent:     #0F4661;   /* survey ink */
+    --accent-2:   #1E6F94;
+    --signal:     #D2761D;   /* sector orange */
+    --c-teal:     #237F7B;
+    --c-gold:     #9A7614;
+    --c-red:      #A9433A;
+    --c-blue:     #2F6E9B;
+    --c-violet:   #6F5AA0;
+    --shadow:     0 1px 2px rgba(16,29,38,.05), 0 8px 24px -16px rgba(16,29,38,.28);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:     #0C1317;
+      --surface:   #121C22;
+      --surface-2: #16222A;
+      --ink:       #E3EAED;
+      --ink-2:     #97A9B3;
+      --ink-3:     #6A7C87;
+      --rule:      #24333B;
+      --rule-soft: #1B282F;
+      --accent:    #6FBEE2;
+      --accent-2:  #4E9CC2;
+      --signal:    #EE9A3B;
+      --c-teal:    #4FBDB6;
+      --c-gold:    #D6AE45;
+      --c-red:     #DE7166;
+      --c-blue:    #6FAEDC;
+      --c-violet:  #A98FD8;
+      --shadow:    0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper:     #0C1317;
+    --surface:   #121C22;
+    --surface-2: #16222A;
+    --ink:       #E3EAED;
+    --ink-2:     #97A9B3;
+    --ink-3:     #6A7C87;
+    --rule:      #24333B;
+    --rule-soft: #1B282F;
+    --accent:    #6FBEE2;
+    --accent-2:  #4E9CC2;
+    --signal:    #EE9A3B;
+    --c-teal:    #4FBDB6;
+    --c-gold:    #D6AE45;
+    --c-red:     #DE7166;
+    --c-blue:    #6FAEDC;
+    --c-violet:  #A98FD8;
+    --shadow:    0 1px 2px rgba(0,0,0,.4), 0 10px 28px -18px rgba(0,0,0,.9);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+    font-size: 17px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- shared type roles ---------- */
+  .u-mono {
+    font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: .705rem;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    font-weight: 500;
+  }
+  h1, h2, h3, .display {
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+    font-variation-settings: "wdth" 108;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 28px; }
+  .prose { max-width: 68ch; }
+
+  /* ---------- hero ---------- */
+  .hero {
+    position: relative;
+    border-bottom: 1px solid var(--rule);
+    background: var(--surface);
+    overflow: hidden;
+  }
+  .hero canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    pointer-events: none;
+  }
+  .hero-inner {
+    position: relative;
+    padding: 84px 0 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .eyebrow { color: var(--accent-2); display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; }
+  .eyebrow span { color: var(--ink-3); }
+  h1 {
+    font-size: clamp(2.5rem, 6.4vw, 4.6rem);
+    line-height: .96;
+    font-weight: 800;
+    font-variation-settings: "wdth" 118;
+    letter-spacing: -.022em;
+    max-width: 16ch;
+  }
+  .standfirst {
+    font-size: clamp(1.06rem, 1.9vw, 1.26rem);
+    color: var(--ink-2);
+    max-width: 56ch;
+    line-height: 1.55;
+  }
+  .metastrip {
+    display: flex; flex-wrap: wrap; gap: 0;
+    border-top: 1px solid var(--rule-soft);
+    margin-top: 14px;
+  }
+  .metastrip div {
+    padding: 14px 22px 0 0;
+    margin-right: 22px;
+    border-right: 1px solid var(--rule-soft);
+    display: flex; flex-direction: column; gap: 3px;
+  }
+  .metastrip div:last-child { border-right: 0; }
+  .metastrip dt { color: var(--ink-3); }
+  .metastrip dd { margin: 0; font-family: Archivo, sans-serif; font-size: .95rem; font-weight: 600; color: var(--ink); }
+
+  /* ---------- section frame ---------- */
+  section { padding: 62px 0; border-bottom: 1px solid var(--rule-soft); }
+  section:last-of-type { border-bottom: 0; }
+  .sec-head { display: flex; flex-direction: column; gap: 10px; margin-bottom: 30px; }
+  .sec-head .u-mono { color: var(--accent-2); }
+  h2 {
+    font-size: clamp(1.5rem, 3.2vw, 2.05rem);
+    font-weight: 700;
+    letter-spacing: -.014em;
+    line-height: 1.1;
+    max-width: 22ch;
+  }
+  .sec-head p { margin: 4px 0 0; color: var(--ink-2); max-width: 62ch; font-size: 1.01rem; }
+  p { margin: 0 0 1.05em; }
+  p:last-child { margin-bottom: 0; }
+  .stack { display: flex; flex-direction: column; gap: 1.05em; }
+  strong { font-weight: 600; color: var(--ink); }
+  em { font-style: italic; }
+
+  /* ---------- thesis pull ---------- */
+  .thesis {
+    margin: 34px 0 0;
+    padding: 28px 30px;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--signal);
+    box-shadow: var(--shadow);
+  }
+  .thesis p {
+    font-family: Archivo, sans-serif;
+    font-variation-settings: "wdth" 112;
+    font-size: clamp(1.12rem, 2.3vw, 1.42rem);
+    font-weight: 600;
+    line-height: 1.32;
+    letter-spacing: -.012em;
+    max-width: 30ch;
+  }
+
+  /* ---------- question cards ---------- */
+  .qgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1px; background: var(--rule); border: 1px solid var(--rule); }
+  .qgrid article { background: var(--surface); padding: 22px 20px 24px; display: flex; flex-direction: column; gap: 9px; }
+  .qgrid h3 { font-size: 1.16rem; font-weight: 700; letter-spacing: -.01em; }
+  .qgrid p { color: var(--ink-2); font-size: .95rem; line-height: 1.5; margin: 0; }
+  .qgrid .tagline { color: var(--ink-3); }
+  .solved  { color: var(--c-teal); }
+  .unsolved{ color: var(--signal); }
+
+  /* ---------- provocations ---------- */
+  .provs { display: grid; gap: 14px; }
+  .prov {
+    display: grid;
+    grid-template-columns: 62px 1fr;
+    gap: 18px;
+    padding: 20px 22px;
+    background: var(--surface);
+    border: 1px solid var(--rule-soft);
+    align-items: start;
+  }
+  .prov:hover { border-color: var(--rule); }
+  .prov .id {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 1.02rem;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: .02em;
+    padding-top: 2px;
+  }
+  .prov h3 { font-size: 1.1rem; font-weight: 700; letter-spacing: -.008em; margin-bottom: 6px; }
+  .prov p { color: var(--ink-2); font-size: .97rem; line-height: 1.55; margin: 0; }
+  .prov .ask { display: block; margin-top: 8px; color: var(--ink); font-style: italic; }
+
+  /* ---------- reference table ---------- */
+  .tablewrap { overflow-x: auto; border: 1px solid var(--rule); background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: .95rem; }
+  th, td { text-align: left; padding: 13px 18px; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  thead th {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: .69rem; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--ink-3); font-weight: 500;
+    border-bottom: 1px solid var(--rule);
+    background: var(--surface-2);
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.src { font-family: Archivo, sans-serif; font-weight: 600; color: var(--ink); white-space: nowrap; }
+  td.take { color: var(--ink-2); }
+  td.take b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- primitives ---------- */
+  .prims { display: grid; grid-template-columns: repeat(auto-fit, minmax(228px, 1fr)); gap: 16px; }
+  .prim { padding: 20px; border: 1px solid var(--rule-soft); background: var(--surface); border-top: 3px solid var(--pc, var(--accent)); display: flex; flex-direction: column; gap: 8px; }
+  .prim .u-mono { color: var(--pc, var(--accent)); }
+  .prim h3 { font-size: 1.06rem; font-weight: 700; }
+  .prim p { font-size: .93rem; color: var(--ink-2); line-height: 1.5; margin: 0; }
+
+  /* ---------- rules list ---------- */
+  .rules { list-style: none; padding: 0; margin: 0; display: grid; gap: 0; border-top: 1px solid var(--rule-soft); }
+  .rules li { padding: 15px 0; border-bottom: 1px solid var(--rule-soft); display: grid; grid-template-columns: minmax(150px, 210px) 1fr; gap: 20px; align-items: baseline; }
+  .rules b { font-family: Archivo, sans-serif; font-weight: 600; font-size: .97rem; }
+  .rules span { color: var(--ink-2); font-size: .97rem; }
+
+  /* ---------- tests ---------- */
+  .tests { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+  .test { padding: 22px; background: var(--surface-2); border: 1px solid var(--rule-soft); display: flex; flex-direction: column; gap: 8px; }
+  .test h3 { font-size: 1.02rem; font-weight: 700; }
+  .test p { margin: 0; font-size: .95rem; color: var(--ink-2); line-height: 1.5; }
+
+  /* ---------- glossary ---------- */
+  .gloss { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 2px 26px; }
+  .gloss div { padding: 9px 0; border-bottom: 1px dotted var(--rule); display: flex; gap: 12px; align-items: baseline; }
+  .gloss dt { font-family: "IBM Plex Mono", monospace; font-size: .8rem; font-weight: 600; color: var(--accent-2); white-space: nowrap; letter-spacing: .01em; }
+  .gloss dd { margin: 0; font-size: .9rem; color: var(--ink-2); line-height: 1.45; }
+
+  /* ---------- closing ---------- */
+  .closing { background: var(--surface); border: 1px solid var(--rule); padding: 34px 32px; display: flex; flex-direction: column; gap: 16px; box-shadow: var(--shadow); }
+  .closing h2 { font-size: clamp(1.4rem, 3vw, 1.85rem); }
+  .asks { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; counter-reset: ask; }
+  .asks li { display: grid; grid-template-columns: 30px 1fr; gap: 14px; align-items: baseline; color: var(--ink-2); font-size: 1rem; }
+  .asks li::before {
+    counter-increment: ask; content: counter(ask, decimal-leading-zero);
+    font-family: "IBM Plex Mono", monospace; font-size: .78rem; font-weight: 600;
+    color: var(--signal); letter-spacing: .06em;
+  }
+  .asks b { color: var(--ink); font-weight: 600; }
+
+  footer { padding: 40px 0 64px; color: var(--ink-3); font-size: .86rem; }
+  footer .u-mono { color: var(--ink-3); }
+
+  a { color: var(--accent-2); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+
+  @media (max-width: 640px) {
+    body { font-size: 16px; }
+    .hero-inner { padding: 56px 0 44px; }
+    .prov { grid-template-columns: 1fr; gap: 6px; }
+    .rules li { grid-template-columns: 1fr; gap: 4px; }
+    .metastrip div { border-right: 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<header class="hero">
+  <canvas id="pattern" aria-hidden="true"></canvas>
+  <div class="wrap hero-inner">
+    <div class="eyebrow u-mono">NineOne · Geo <span>/ Ideation brief — not a spec</span></div>
+    <h1>Build the map they open first.</h1>
+    <p class="standfirst">We have twenty-one map layers scoped for RF engineers running Japan's newest mobile network. Twenty-one layers is a catalogue. We want an instrument. That gap is the assignment.</p>
+    <dl class="metastrip">
+      <div><dt class="u-mono">For</dt><dd>Interns, geo squad</dd></div>
+      <div><dt class="u-mono">Bring back</dt><dd>Sketches, prototypes, arguments</dd></div>
+      <div><dt class="u-mono">Constraint</dt><dd>Experts are the users</dd></div>
+    </dl>
+  </div>
+</header>
+
+<main>
+<div class="wrap">
+
+  <section>
+    <div class="sec-head">
+      <div class="u-mono">The situation</div>
+      <h2>Everything below is already true. None of it is the product.</h2>
+    </div>
+    <div class="prose stack">
+      <p>An RF engineer keeps a mobile network working. Every day they get a pile of evidence about invisible radio waves — cells and their sector antennas, signal-strength measurements crowdsourced from phones, drive tests, dropped-call counters, customer complaints, alarms — and every single piece of it has a latitude and longitude attached. The map is not a view onto their work. It <em>is</em> their work.</p>
+      <p>We have the data feeds, a clean pipeline, and a scoped list of twenty-one layers to draw. That part is engineering and it is going fine. What we do not have is a reason for anyone to love it. Every incumbent tool in this market can also draw dots on a map, and RF engineers already have three of them open.</p>
+      <p>The thing we can build that they cannot is a map that <strong>explains</strong> — one wired to an AI agent that investigates network faults, so the map is not just where you look, it is where the answer arrives.</p>
+    </div>
+    <div class="thesis"><p>Nobody has ever loved a list of checkboxes. Design the instrument, not the catalogue.</p></div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="u-mono">The four questions</div>
+      <h2>Every map in this market answers two of these. Take the other two.</h2>
+      <p>An engineer arrives at the map with a question. There are only ever four.</p>
+    </div>
+    <div class="qgrid">
+      <article>
+        <div class="u-mono solved">Solved everywhere</div>
+        <h3>What is broken?</h3>
+        <p>Which cells are underperforming today. A ranked list with colour on it. Table stakes.</p>
+      </article>
+      <article>
+        <div class="u-mono solved">Solved everywhere</div>
+        <h3>Where is it?</h3>
+        <p>Put the broken thing on a map so its neighbours and its geography are visible. Also table stakes.</p>
+      </article>
+      <article>
+        <div class="u-mono unsolved">Wide open</div>
+        <h3>Why is it broken?</h3>
+        <p>A hill. A new building. An antenna pointing three degrees wrong. A neighbour that went down at 02:00. Geography <em>is</em> the explanation — and no tool draws the explanation, only the symptom.</p>
+      </article>
+      <article>
+        <div class="u-mono unsolved">Wide open</div>
+        <h3>Did it get better?</h3>
+        <p>Before and after. The single question a new cell site exists to answer, and the one every tool makes you answer by opening two windows and squinting.</p>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="u-mono">Ten provocations</div>
+      <h2>Open problems. Pick one and go strange with it.</h2>
+      <p>These are questions, not requirements. Each has a handle so you can say "I took P4." Disagreeing with a provocation, with evidence, is a valid answer.</p>
+    </div>
+    <div class="provs">
+
+      <div class="prov"><div class="id">P1</div><div>
+        <h3>Time is the second map</h3>
+        <p>Every layer has a clock — measurements, alarms, complaints, counters. Right now time is one slider bolted to one layer.</p>
+        <span class="ask">What single control lets you scrub, compare two moments, and play a sequence — without turning into a video editor?</span>
+      </div></div>
+
+      <div class="prov"><div class="id">P2</div><div>
+        <h3>Before / after is the whole product</h3>
+        <p>A new site is judged entirely by what changed after it switched on. Everyone reaches for a swipe divider. Everyone is probably wrong.</p>
+        <span class="ask">Is the answer two panes, a swipe, a blink, or a third layer that renders only the <em>difference</em> and nothing else?</span>
+      </div></div>
+
+      <div class="prov"><div class="id">P3</div><div>
+        <h3>Thirty wedges on one dot</h3>
+        <p>An urban rooftop carries three sectors × five frequency bands × two network generations at <em>identical</em> coordinates. Draw them all and you get an orange blob. Draw one and you are lying.</p>
+        <span class="ask">How does a single site render honestly at country zoom, city zoom, and street zoom — as three different things, or one thing that grows up?</span>
+      </div></div>
+
+      <div class="prov"><div class="id">P4</div><div>
+        <h3>Colour is a scarce resource</h3>
+        <p>Five layers each colour-coded by value produce mud. But engineers genuinely need to see signal quality and call drops and alarms together.</p>
+        <span class="ask">What is the rule that keeps exactly one thing loud and everything else structural — and what happens when a user insists on breaking it?</span>
+      </div></div>
+
+      <div class="prov"><div class="id">P5</div><div>
+        <h3>It should open on an answer</h3>
+        <p>Today it opens on a blank map of Japan and waits. An engineer responsible for forty sites has to <em>work the tool</em> before the tool works for them.</p>
+        <span class="ask">What is "today's map" for one person? Is it even a map, or a set of small ones you tap into?</span>
+      </div></div>
+
+      <div class="prov"><div class="id">P6</div><div>
+        <h3>The map is also a graph</h3>
+        <p>Behind the map is a knowledge graph: this cell relates to that cell, this alarm touched these counters, this rule fired on this evidence. Geography and topology are two projections of one truth.</p>
+        <span class="ask">Two linked views, or one thing that morphs between space and network? Show us the transition.</span>
+      </div></div>
+
+      <div class="prov"><div class="id">P7</div><div>
+        <h3>Let the agent author the map</h3>
+        <p>Our AI agent writes fault investigations. Imagine it can also emit a saved map — layers, filters, time window, camera position, legend — as its evidence.</p>
+        <span class="ask">What does it feel like to <em>receive</em> a map from an agent? Can you step through its reasoning as camera moves? Can you edit it and send it back?</span>
+      </div></div>
+
+      <div class="prov"><div class="id">P8</div><div>
+        <h3>A map that admits doubt</h3>
+        <p>Some coordinates are surveyed. Some are guessed from a scribbled address. A confidently misplaced pin surrounded by real data looks exactly like a right answer — this is the documented way AI mapping fails.</p>
+        <span class="ask">How do you render uncertainty so it is impossible to miss and doesn't wreck the picture?</span>
+      </div></div>
+
+      <div class="prov"><div class="id">P9</div><div>
+        <h3>3D has to earn its place</h3>
+        <p>Terrain and buildings genuinely explain coverage gaps — radio does not go through hills. Japan publishes free national elevation data and a free 3D model of two hundred cities. But 3D is slower, heavier, and harder to read than a flat map.</p>
+        <span class="ask">When does the third dimension switch on — and does the user ask for it, or does the map decide?</span>
+      </div></div>
+
+      <div class="prov"><div class="id">P10</div><div>
+        <h3>The paste-into-chat problem</h3>
+        <p>How work actually spreads in an operations team: someone screenshots their screen and drops it in a thread. A screenshot loses the layers, the legend, the time, and the truth.</p>
+        <span class="ask">One action, one link, exactly what they were looking at — and still correct when opened next week. What is that object?</span>
+      </div></div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="u-mono">Reference shelf</div>
+      <h2>Ten places we looked, and the one idea worth taking from each.</h2>
+      <p>Go look at all of them. Take the idea, not the interface — most of these are ugly.</p>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Source</th><th>What it is</th><th>Take this</th></tr></thead>
+        <tbody>
+          <tr><td class="src">Esri VFRS viewer</td><td class="take">A stadium fire-asset 3D viewer</td><td class="take"><b>The best UI on the shelf.</b> A 3D · Split · 2D switch, a floor slider, saved bookmarks, and an Analysis panel where you click to drop a <em>viewshed</em> — what can be seen from this point. Point that at an antenna and you have "why is there a gap there."</td></tr>
+          <tr><td class="src">QGIS · MapInfo</td><td class="take">The desktop tools our users already know</td><td class="take"><b>Verbs, not features.</b> Reorderable layer tree with opacity. A table wired to the map both ways. Select-by-drawing-a-shape. User-editable colour thresholds. Learn these and you inherit twenty years of muscle memory.</td></tr>
+          <tr><td class="src">CesiumJS</td><td class="take">3D globe engine</td><td class="take"><b>Its clock widget.</b> The most refined time control in the industry — play, pause, speed, range. Do not adopt the engine; steal the interaction wholesale for P1.</td></tr>
+          <tr><td class="src">deck.gl</td><td class="take">GPU visualisation layers</td><td class="take"><b>Animated trips, arcs, contours, hex bins.</b> Half our backlog is a deck.gl layer that already exists. Also: it makes hovering feel instant, and instant is most of what "good" means here.</td></tr>
+          <tr><td class="src">Mapbox GL JS</td><td class="take">The commercial map engine</td><td class="take"><b>Feature-state.</b> Hover and selection handled on the graphics card instead of redrawing data. The cheap trick behind every map that feels alive.</td></tr>
+          <tr><td class="src">Terrain &amp; building extrusion</td><td class="take">A rendering technique</td><td class="take"><b>Japan gives it away.</b> National elevation data from the survey authority, plus PLATEAU — an official open 3D model of 200+ Japanese cities. Free, official, and instantly credible to this customer.</td></tr>
+          <tr><td class="src">Live measurement layering</td><td class="take">A rendering technique</td><td class="take"><b>Show the sample count, not just the value.</b> A tile built from three measurements currently looks identical to one built from three thousand. That is how measurement maps lie. Fade stale data. Fuse sources instead of stacking them.</td></tr>
+          <tr><td class="src">Dynamic beam patterns</td><td class="take">A rendering technique</td><td class="take"><b>Draw the real antenna shape.</b> Not a generic pie slice — the actual radiation pattern, with its tilt and height. Then put a slider on the tilt and let someone preview a change before anyone approves it. This is the difference between looking like a map and looking like an RF instrument.</td></tr>
+          <tr><td class="src">Ranplan · Bentley OpenTower iQ</td><td class="take">Radio planning; tower digital twins</td><td class="take"><b>Designed versus actual.</b> Both are built on overlaying the plan against reality. Nobody owns the same idea for live radio: what the configuration <em>claims</em> an antenna does, against what the network's own measurements say it is doing.</td></tr>
+          <tr><td class="src">xMap.ai</td><td class="take">Location data for AI agents — no UI at all</td><td class="take"><b>Frozen versions.</b> They serve data snapshots so an agent gets the same answer twice. If an investigation cites a map, that map must still render identically a month later, from frozen inputs. That is the line between evidence and a screenshot.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="u-mono">Foundations</div>
+      <h2>Four things we think must exist underneath, whatever you design on top.</h2>
+      <p>Argue with these too — but if you replace one, replace it with something that does the same job.</p>
+    </div>
+    <div class="prims">
+      <div class="prim" style="--pc: var(--c-blue)">
+        <div class="u-mono">Clock</div>
+        <h3>One time control, shared</h3>
+        <p>Not per-layer. Every layer registers against a single clock that can hold one moment or two.</p>
+      </div>
+      <div class="prim" style="--pc: var(--c-teal)">
+        <div class="u-mono">Selection</div>
+        <h3>One selection, everywhere</h3>
+        <p>Pick a cell — on the map, in a table, in a chart — and every other surface responds. This is what makes a tool feel like one tool.</p>
+      </div>
+      <div class="prim" style="--pc: var(--signal)">
+        <div class="u-mono">Recipe</div>
+        <h3>A map you can name and send</h3>
+        <p>Layers + filters + time + camera as one saveable object. Users save them. Agents emit them. Links carry them.</p>
+      </div>
+      <div class="prim" style="--pc: var(--c-violet)">
+        <div class="u-mono">Provenance</div>
+        <h3>Every shape knows its source</h3>
+        <p>Where it came from, how fresh it is, how confident. Visible on screen, not buried in a payload.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="u-mono">Rules of the game</div>
+      <h2>Six constraints. They are the interesting part.</h2>
+    </div>
+    <ul class="rules">
+      <li><b>Read-only</b><span>The map never changes the live network. Anything actionable leaves through a separate approval path. Design within that — a preview of a change is not a change.</span></li>
+      <li><b>No fake precision</b><span>Six decimal places on a guessed coordinate is a lie told fluently. If we can't say where a shape came from, we don't draw it.</span></li>
+      <li><b>Experts, not novices</b><span>Our users know these tools better than we do. Don't explain a map to them. Give them faster verbs and get out of the way.</span></li>
+      <li><b>Speed is a feature</b><span>Toggle to painted in under a tenth of a second, or it feels broken. Budget it before you design it.</span></li>
+      <li><b>Japanese network, Japanese data</b><span>Kanji labels, national elevation and 3D city data, dense urban geometry. Design for Tokyo, not for a demo city.</span></li>
+      <li><b>Beautiful is not optional</b><span>This gets shown to people who have stared at the same grey engineering software for fifteen years. Looking extraordinary is part of the argument, not decoration on top of it.</span></li>
+    </ul>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="u-mono">What good looks like</div>
+      <h2>Three tests. All three are about other people, not about us.</h2>
+    </div>
+    <div class="tests">
+      <div class="test"><h3>The five-second test</h3><p>An RF engineer glances at it and says "that's an RF tool" — not "that's a map with your data on it." Usually decided by how you draw a single site.</p></div>
+      <div class="test"><h3>The morning test</h3><p>They open it before their email. Which means it has to already know what happened overnight and have an opinion about it.</p></div>
+      <div class="test"><h3>The thread test</h3><p>They send a colleague a link to it instead of a screenshot — and the colleague sees the same thing, still true, next week.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <div class="u-mono">Field vocabulary</div>
+      <h2>Ten words, so the domain stops being a wall.</h2>
+      <p>You do not need radio engineering to design this. You do need these ten.</p>
+    </div>
+    <dl class="gloss">
+      <div><dt>Cell</dt><dd>One antenna's worth of coverage. A site has many.</dd></div>
+      <div><dt>Sector</dt><dd>The wedge of ground a cell points at. Usually three per site.</dd></div>
+      <div><dt>Azimuth</dt><dd>The compass direction a sector faces.</dd></div>
+      <div><dt>Tilt</dt><dd>How far down the antenna aims. The main knob for fixing coverage.</dd></div>
+      <div><dt>RSRP</dt><dd>Signal strength, in dBm. Higher is better; −105 is roughly the pain threshold.</dd></div>
+      <div><dt>SINR</dt><dd>Signal quality — signal versus everything interfering with it.</dd></div>
+      <div><dt>Handover</dt><dd>Passing a moving phone from one cell to the next. When it fails, calls drop.</dd></div>
+      <div><dt>Neighbour</dt><dd>A cell close enough to hand over to. Chosen geographically — by which sectors face you.</dd></div>
+      <div><dt>Coverage hole</dt><dd>An area with no usable signal. The thing new sites are built to close.</dd></div>
+      <div><dt>Drive test</dt><dd>Someone drives a route with measuring equipment. Ground truth, one road at a time.</dd></div>
+    </dl>
+  </section>
+
+  <section>
+    <div class="closing">
+      <div class="u-mono" style="color: var(--signal)">Bring us</div>
+      <h2>Ideas, in whatever form makes them convincing.</h2>
+      <ol class="asks">
+        <li><b>One provocation, taken seriously.</b> Pick from P1–P10. Depth beats coverage — we would rather see one idea pushed to the point of being uncomfortable than ten sketched politely.</li>
+        <li><b>Show it, don't describe it.</b> A rough clickable thing beats a beautiful static one. A beautiful static one beats a paragraph. Fake data is completely fine.</li>
+        <li><b>Tell us what you'd cut.</b> Twenty-one layers is too many. Which eight would you actually ship, and what does the map become when the other thirteen are gone?</li>
+        <li><b>Bring one reference we haven't seen.</b> From anywhere — a game, a flight tracker, an audio tool, a weather app, a museum piece. The best map ideas rarely come from maps.</li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>
+    <div class="u-mono">NineOne · Geo — ideation brief</div>
+    <p style="margin-top:8px; max-width: 60ch;">Nothing here is settled. The list of twenty-one layers is a starting position we fully expect to be argued out of.</p>
+  </footer>
+
+</div>
+</main>
+
+<script>
+(function () {
+  var cv = document.getElementById('pattern');
+  if (!cv) return;
+  var ctx = cv.getContext('2d');
+
+  function tok(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  // horizontal radiation pattern: main lobe + modest back lobe, in linear gain
+  function gain(rel, hpbw) {
+    var a = Math.exp(-2.773 * Math.pow(rel / (hpbw / 2), 2));
+    var back = 0.085 * Math.exp(-2.0 * Math.pow((Math.abs(rel) - Math.PI) / 1.1, 2));
+    return Math.max(a, back, 0.035);
+  }
+
+  function draw() {
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var w = cv.clientWidth, h = cv.clientHeight;
+    if (!w || !h) return;
+    cv.width = w * dpr; cv.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+
+    var accent = tok('--accent') || '#0F4661';
+    var signal = tok('--signal') || '#D2761D';
+    var rule = tok('--rule') || '#CBD5DA';
+
+    // anchored to the right edge, drifting off-canvas — a plot, not a logo
+    var cx = w - Math.min(w * 0.19, 210);
+    var cy = h * 0.52;
+    var R = Math.max(Math.min(w, h) * 0.62, 210);
+
+    // faint dB rings
+    ctx.globalAlpha = 0.5;
+    ctx.strokeStyle = rule;
+    ctx.lineWidth = 1;
+    for (var k = 1; k <= 4; k++) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, R * (k / 4), 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    // radial ticks every 30 degrees
+    for (var d = 0; d < 360; d += 30) {
+      var t = d * Math.PI / 180;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(t) * R * 0.965, cy + Math.sin(t) * R * 0.965);
+      ctx.lineTo(cx + Math.cos(t) * R, cy + Math.sin(t) * R);
+      ctx.stroke();
+    }
+
+    // three sectors
+    var azis = [-90, 30, 150];
+    var hpbw = 65 * Math.PI / 180;
+    for (var s = 0; s < azis.length; s++) {
+      var az = azis[s] * Math.PI / 180;
+      var col = (s === 0) ? signal : accent;
+      ctx.beginPath();
+      for (var i = 0; i <= 240; i++) {
+        var th = az - Math.PI + (i / 240) * Math.PI * 2;
+        var rel = th - az;
+        while (rel > Math.PI) rel -= Math.PI * 2;
+        while (rel < -Math.PI) rel += Math.PI * 2;
+        var r = R * 0.94 * gain(rel, hpbw);
+        var x = cx + Math.cos(th) * r, y = cy + Math.sin(th) * r;
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.globalAlpha = (s === 0) ? 0.10 : 0.055;
+      ctx.fillStyle = col;
+      ctx.fill();
+      ctx.globalAlpha = (s === 0) ? 0.55 : 0.28;
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.25;
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  var raf;
+  function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(draw); }
+
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(schedule);
+  window.addEventListener('resize', schedule);
+  new MutationObserver(schedule).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  if (window.matchMedia) {
+    var mq = window.matchMedia('(prefers-color-scheme: dark)');
+    (mq.addEventListener ? mq.addEventListener.bind(mq, 'change') : mq.addListener.bind(mq))(schedule);
+  }
+  schedule();
+})();
+</script>
