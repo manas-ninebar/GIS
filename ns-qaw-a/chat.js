@@ -10,8 +10,10 @@ export function contextChips({ section, selected, inv } = {}) {
   if (section === 'gh') chips.push('coverage holes', 'show drive test', 'back to overview')
   else if (section === 'dt') chips.push('show groundhog', 'back to overview')
   else if (section === 'holes') chips.push('show groundhog', 'back to overview')
+  else if (section === 'neighbors') chips.push('back to overview')
   else chips.push('show planned sites', 'macros in alarm', 'show drive test', 'show groundhog')
   if (selected && inv?.sites?.some((s) => s.site_id === selected)) {
+    if (section !== 'neighbors') chips.push(`tier-1 neighbours for ${selected}`)
     chips.push(`what alarms on ${selected}`, 'clear selection')
   }
   return chips
@@ -123,6 +125,12 @@ export function parseAsk(text, inv, selectedId) {
     recipe.ghLayer = true
     recipe.dtLayer = false
     return { type: 'recipe', recipe, section: 'holes', narrate: 'Coverage holes from Groundhog RSRP ≤ −105 dBm.', fly: 'gh' }
+  }
+
+  if (/tier.?1|tier 1|show neighbou?rs?|neighbou?rs? for/.test(t)) {
+    const sid = site?.site_id
+    if (!sid) return { type: 'help', narrate: 'Name a site or select one first (e.g. "tier-1 neighbours for TOK_001").' }
+    return { type: 'neighbors', siteId: sid, narrate: `Tier-1 facing neighbours for ${sid} — auto-proposed within 1.2 km, click a sector on the map to add or remove it.` }
   }
 
   if (/\bin alarm\b|macros in alarm|sites in alarm/.test(t) && !/what/.test(t)) {
