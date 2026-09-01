@@ -8,7 +8,7 @@ export const EMPTY_REASON = {
   IDSC: '0 rooftops — ingest is MACRO only',
   ODSC: '0 rooftops — ingest is MACRO only',
   DAS: '0 rooftops — ingest is MACRO only',
-  VOC: '0 geocoded complaints — WISE/Sukayat VOC has no lat/lng in this TOK ingest',
+  VOC: '0 geocoded complaints in current ingest',
 }
 
 export function defaultRecipe() {
@@ -24,8 +24,8 @@ export function defaultRecipe() {
     view: '2d',
     sectorsLayer: true,
     spiderLayer: true,
-    ghLayer: true,
-    dtLayer: true,
+    ghLayer: false,
+    dtLayer: false,
     holesLayer: false,
     ghContourLayer: false,
     vocLayer: false,
@@ -152,41 +152,54 @@ function pillBtn(recipe, key, val, n) {
 export function renderFacets(el, inv, recipe, onChange) {
   const enums = inv.enums
   const html = []
+  const pushGroup = (title, body) => {
+    html.push(`<section class="facet-group"><h2>${title}</h2>${body.join('')}</section>`)
+  }
   const loudPills = (title, key, values, getN) => {
     const live = values.filter((val) => getN(val) > 0 || !EMPTY_REASON[val])
     if (!live.length) return
     const rows = live.map((val) => pillBtn(recipe, key, val, getN(val))).join('')
-    html.push(`<div class="facet"><h3>${title}</h3><div class="facet-row">${rows}</div></div>`)
+    return `<div class="facet"><h3>${title}</h3><div class="facet-row">${rows}</div></div>`
   }
 
-  loudPills('Status', 'status', enums.status, (val) => inv.sites.filter((s) => v(s.status) === val).length)
-  loudPills('Band', 'band', enums.band.length ? enums.band : ['B3'], (val) => new Set(inv.cells.filter((c) => v(c.band) === val).map((c) => c.site_id)).size)
+  const layerStack = []
+  layerStack.push(`<div class="facet"><h3>Layer stack</h3>
+    <label class="toggle"><input type="checkbox" data-layer="plannedLayer" ${recipe.plannedLayer ? 'checked' : ''}/> Planned sites</label>
+    <label class="toggle"><input type="checkbox" data-layer="sectorsLayer" ${recipe.sectorsLayer ? 'checked' : ''}/> Sector lobes</label>
+    <label class="toggle"><input type="checkbox" data-layer="ghLayer" ${recipe.ghLayer ? 'checked' : ''}/> Groundhog (${nPts(inv.groundhog).toLocaleString()})</label>
+    <label class="toggle"><input type="checkbox" data-layer="dtLayer" ${recipe.dtLayer ? 'checked' : ''}/> Drive test routes (${Number(inv.drive_test_paths?.n_routes || 0).toLocaleString()})</label>
+  </div>`)
+  pushGroup('Layer Stack', layerStack)
+
+  const filtersCore = []
+  const statusRow = loudPills('Status', 'status', enums.status, (val) => inv.sites.filter((s) => v(s.status) === val).length)
+  if (statusRow) filtersCore.push(statusRow)
+  const bandRow = loudPills('Band', 'band', enums.band.length ? enums.band : ['B3'], (val) => new Set(inv.cells.filter((c) => v(c.band) === val).map((c) => c.site_id)).size)
+  if (bandRow) filtersCore.push(bandRow)
   const carriers = [...new Set(inv.cells.map((c) => String(v(c.carrier) || '')).filter(Boolean))].sort()
   if (carriers.length) {
-    loudPills('Carrier', 'carrier', carriers, (val) => new Set(inv.cells.filter((c) => String(v(c.carrier)) === val).map((c) => c.site_id)).size)
+    const carrierRow = loudPills('Carrier', 'carrier', carriers, (val) => new Set(inv.cells.filter((c) => String(v(c.carrier)) === val).map((c) => c.site_id)).size)
+    if (carrierRow) filtersCore.push(carrierRow)
   }
 
-  html.push(`<div class="facet"><h3>Fault</h3><div class="facet-row">
+  filtersCore.push(`<div class="facet"><h3>Fault</h3><div class="facet-row">
     <button type="button" class="pill${recipe.inAlarm === true ? ' on' : ''}" data-key="inAlarm" data-val="true">in alarm<small> ${inv.sites.filter((s) => s.in_alarm).length}</small></button>
     <button type="button" class="pill${recipe.serviceAffecting === true ? ' on' : ''}" data-key="sa" data-val="true">service affecting</button>
   </div></div>`)
+  pushGroup('Layer Filters', filtersCore)
 
   const vocN = nPts(inv.voc)
-  html.push(`<div class="facet"><h3>Layers</h3>
-    <label class="toggle"><input type="checkbox" data-layer="plannedLayer" ${recipe.plannedLayer ? 'checked' : ''}/> Planned sites · gold rings</label>
-    <label class="toggle"><input type="checkbox" data-layer="sectorsLayer" ${recipe.sectorsLayer ? 'checked' : ''}/> Sectors · HPBW lobes</label>
-    <label class="toggle"><input type="checkbox" data-layer="ghLayer" ${recipe.ghLayer ? 'checked' : ''}/> Groundhog · ${nPts(inv.groundhog).toLocaleString()}</label>
-    <label class="toggle"><input type="checkbox" data-layer="dtLayer" ${recipe.dtLayer ? 'checked' : ''}/> Drive test · ${nPts(inv.drive_test).toLocaleString()}</label>
-  </div>`)
-
   const dated = inv.sites.filter((s) => v(s.on_air_date)).length
-  html.push(`<div class="facet"><h3>On-air date</h3>
+  const sourceSummary = []
+  sourceSummary.push(`<div class="facet"><h3>Data sources</h3><p class="hint">Sites ${inv.sites.length} · Cells ${inv.cells.length} · VOC ${vocN.toLocaleString()}</p></div>`)
+  sourceSummary.push(`<div class="facet"><h3>On-air date</h3>
     <div class="range">
       <label>from <input type="date" data-air="from" value="${recipe.onAirFrom || ''}" /></label>
       <label>to <input type="date" data-air="to" value="${recipe.onAirTo || ''}" /></label>
     </div>
-    <p class="hint">${dated} / ${inv.sites.length} commercial dates — none in this ingest.</p>
+    <p class="hint">${dated} / ${inv.sites.length} sites with dates in current ingest.</p>
   </div>`)
+  pushGroup('Data Sources', sourceSummary)
 
   const techN = (val) => new Set(inv.cells.filter((c) => v(c.tech) === val).map((c) => c.site_id)).size
   const typeN = (val) => inv.sites.filter((s) => v(s.site_type) === val).length
@@ -200,29 +213,32 @@ export function renderFacets(el, inv, recipe, onChange) {
   if (emptyType.length) emptyBits.push(emptyType.join(', ') + ' — MACRO only')
   if (vocN === 0) emptyBits.push(EMPTY_REASON.VOC)
 
-  html.push(`<details class="more-filters"><summary>More filters · 0 in this ingest</summary>`)
+  const saved = []
+  saved.push(`<details class="more-filters"><summary>Advanced filters</summary>`)
   if (liveTech.length) {
-    html.push(`<div class="facet"><h3>Technology</h3><div class="facet-row">${liveTech.map((val) => pillBtn(recipe, 'tech', val, techN(val))).join('')}</div></div>`)
+    saved.push(`<div class="facet"><h3>Technology</h3><div class="facet-row">${liveTech.map((val) => pillBtn(recipe, 'tech', val, techN(val))).join('')}</div></div>`)
   }
   if (liveType.length) {
-    html.push(`<div class="facet"><h3>Site type</h3><div class="facet-row">${liveType.map((val) => pillBtn(recipe, 'siteType', val, typeN(val))).join('')}</div></div>`)
+    saved.push(`<div class="facet"><h3>Site type</h3><div class="facet-row">${liveType.map((val) => pillBtn(recipe, 'siteType', val, typeN(val))).join('')}</div></div>`)
   }
-  loudPills('Morphology', 'morphology', enums.morphology, morphN)
-  html.push(`<div class="facet"><h3>More layers</h3>
+  const morphRow = loudPills('Morphology', 'morphology', enums.morphology, morphN)
+  if (morphRow) saved.push(morphRow)
+  saved.push(`<div class="facet"><h3>More layers</h3>
     <label class="toggle"><input type="checkbox" data-layer="spiderLayer" ${recipe.spiderLayer ? 'checked' : ''}/> Co-site spider · z≥14</label>
     <label class="toggle"><input type="checkbox" data-layer="holesLayer" ${recipe.holesLayer ? 'checked' : ''}/> Coverage holes · GH RSRP ≤ −105</label>
     <label class="toggle"><input type="checkbox" data-layer="ghContourLayer" ${recipe.ghContourLayer ? 'checked' : ''}/> Groundhog contour</label>
     <label class="toggle"><input type="checkbox" data-layer="vocLayer" ${recipe.vocLayer ? 'checked' : ''}/> VOC · ${vocN} geocoded</label>
   </div>`)
-  html.push(`<div class="facet"><h3>PCI</h3><input class="pci-in" data-pci placeholder="exact PCI" value="${recipe.pci || ''}" /></div>`)
-  html.push(`<div class="facet"><h3>Height / tilt</h3><div class="range">
+  saved.push(`<div class="facet"><h3>PCI</h3><input class="pci-in" data-pci value="${recipe.pci || ''}" /></div>`)
+  saved.push(`<div class="facet"><h3>Height / tilt</h3><div class="range">
     <label>h min <input type="number" data-h="0" value="${recipe.height[0] ?? ''}" /></label>
     <label>h max <input type="number" data-h="1" value="${recipe.height[1] ?? ''}" /></label>
     <label>tilt min <input type="number" data-t="0" value="${recipe.mechTilt[0] ?? ''}" /></label>
     <label>tilt max <input type="number" data-t="1" value="${recipe.mechTilt[1] ?? ''}" /></label>
   </div></div>`)
-  if (emptyBits.length) html.push(`<p class="hint">${emptyBits.join(' · ')}</p>`)
-  html.push(`</details>`)
+  if (emptyBits.length) saved.push(`<p class="hint">${emptyBits.join(' · ')}</p>`)
+  saved.push(`</details>`)
+  pushGroup('Advanced', saved)
 
   const wasOpen = el.querySelector('.more-filters')?.open
   el.innerHTML = html.join('')

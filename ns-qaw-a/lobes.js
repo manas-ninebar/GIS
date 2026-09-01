@@ -57,8 +57,8 @@ export function lobePolygon(lng, lat, azimuthDeg, hpbwDeg, reachDeg) {
 function statusColor(status, inAlarm) {
   if (inAlarm || status === 'partial') return '#A9433A'
   if (status === 'planned') return '#9A7614'
-  if (status === 'locked') return '#7B8C96'
-  return '#0F4661'
+  if (status === 'locked') return '#8A8378'
+  return '#1A1612'
 }
 
 function inBounds(lng, lat, b, pad = 0.04) {

@@ -25,9 +25,16 @@ export function planStyle() {
       esri: { type: 'raster', tiles: ESRI.tiles, tileSize: 256, attribution: ESRI.attribution, maxzoom: 19 },
     },
     layers: [
+      { id: 'paper', type: 'background', paint: { 'background-color': '#F0EEE8' } },
       {
         id: 'sat', type: 'raster', source: 'esri',
-        paint: { 'raster-saturation': -0.82, 'raster-brightness-min': 0.02, 'raster-brightness-max': 0.52, 'raster-contrast': -0.08 },
+        paint: {
+          'raster-saturation': -0.7,
+          'raster-opacity': 0.42,
+          'raster-brightness-min': 0.35,
+          'raster-brightness-max': 1,
+          'raster-contrast': -0.18,
+        },
       },
     ],
   }
@@ -90,9 +97,9 @@ export function enhance3d(map) {
   } catch { /* */ }
   try {
     map.setSky({
-      'sky-color': '#071018',
+      'sky-color': '#120e0a',
       'horizon-color': '#3a2416',
-      'fog-color': '#0b1218',
+      'fog-color': '#14110c',
       'sky-horizon-blend': 0.55,
       'horizon-fog-blend': 0.72,
       'fog-ground-blend': 0.35,
@@ -119,7 +126,7 @@ function addCity(map) {
       'source-layer': 'building',
       minzoom: 13,
       paint: {
-        'fill-extrusion-color': '#1a222c',
+        'fill-extrusion-color': '#1a1712',
         'fill-extrusion-height': ['coalesce', ['get', 'render_height'], ['get', 'height'], 16],
         'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
         'fill-extrusion-opacity': 0.72,
@@ -144,7 +151,7 @@ function ensureSources(map) {
       clusterRadius: 52,
     })
   }
-  for (const id of ['sectors', 'spider', 'labels', 'holes', 'measure', 'user', 'probe', 'planned', 'neighbors', 'candidate']) {
+  for (const id of ['sectors', 'spider', 'labels', 'holes', 'measure', 'user', 'probe', 'planned', 'neighbors', 'candidate', 'dt-paths']) {
     if (!map.getSource(id)) {
       map.addSource(id, { type: 'geojson', data: emptyFc(), promoteId: 'id' })
     }
@@ -168,10 +175,10 @@ function ensureLayers(map, recipe = {}) {
     filter: ['has', 'point_count'],
     maxzoom: 10,
     paint: {
-      'circle-color': '#0F4661',
+      'circle-color': '#1A1612',
       'circle-radius': ['step', ['get', 'point_count'], 10, 20, 14, 100, 18, 1000, 24],
       'circle-stroke-width': 1.4,
-      'circle-stroke-color': '#E3EAED',
+      'circle-stroke-color': '#FBF9F5',
       'circle-opacity': 0.92,
     },
   })
@@ -184,7 +191,7 @@ function ensureLayers(map, recipe = {}) {
       'text-font': ['Noto Sans Regular'],
       'text-size': 11,
     },
-    paint: { 'text-color': '#E3EAED' },
+    paint: { 'text-color': '#FBF9F5' },
   })
   addLayer(map, {
     id: 'sites-glow', type: 'circle', source: 'sites',
@@ -214,7 +221,7 @@ function ensureLayers(map, recipe = {}) {
         ['==', ['get', 'in_alarm'], 1], 2.2,
         1,
       ],
-      'circle-stroke-color': '#E3EAED',
+      'circle-stroke-color': '#FBF9F5',
       'circle-opacity': 0.95,
     },
   })
@@ -246,9 +253,18 @@ function ensureLayers(map, recipe = {}) {
       'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 6, 15, 9],
       'circle-color': '#4FBDB6',
       'circle-stroke-width': 2,
-      'circle-stroke-color': '#E3EAED',
+      'circle-stroke-color': '#FBF9F5',
       'circle-pitch-alignment': 'map',
     },
+  })
+  addLayer(map, {
+    id: 'dt-path', type: 'line', source: 'dt-paths',
+    paint: {
+      'line-color': '#5F7488',
+      'line-width': ['interpolate', ['linear'], ['zoom'], 8, 1.2, 12, 1.8, 16, 2.4],
+      'line-opacity': 0.78,
+    },
+    layout: { visibility: recipe.dtLayer ? 'visible' : 'none' },
   })
   addLayer(map, {
     id: 'holes', type: 'fill', source: 'holes',
@@ -315,7 +331,7 @@ function ensureLayers(map, recipe = {}) {
       'text-padding': 4,
       'text-allow-overlap': false,
     },
-    paint: { 'text-color': '#E3EAED', 'text-halo-color': '#101D26', 'text-halo-width': 1.15 },
+    paint: { 'text-color': '#1A1612', 'text-halo-color': '#FBF9F5', 'text-halo-width': 1.15 },
   })
   addLayer(map, {
     id: 'measure-line', type: 'line', source: 'measure',
@@ -354,6 +370,9 @@ function ensureLayers(map, recipe = {}) {
   })
   if (map.getLayer('sectors-3d')) {
     map.setLayoutProperty('sectors-3d', 'visibility', vis(three))
+  }
+  if (map.getLayer('dt-path')) {
+    map.setLayoutProperty('dt-path', 'visibility', vis(!!recipe.dtLayer))
   }
   if (map.getLayer('sectors')) {
     map.setLayerZoomRange('sectors', 10, three ? 15 : 24)
@@ -420,6 +439,7 @@ export function dressAndPaint(map, geo, recipe, extras = {}) {
     map.getSource('planned')?.setData(recipe.plannedLayer && geo.plannedFc ? geo.plannedFc : emptyFc())
     map.getSource('neighbors')?.setData(extras.neighborLines || emptyFc())
     map.getSource('candidate')?.setData(extras.candidateFc || emptyFc())
+    map.getSource('dt-paths')?.setData(recipe.dtLayer && extras.dtPaths ? extras.dtPaths : emptyFc())
     setSelectedState(map, extras.selectedId || null)
     setNeighborState(map, extras.neighborIds)
     paintHeavy(map, { gh: extras.gh, dt: extras.dt, recipe }).catch((err) => {
@@ -517,18 +537,31 @@ export function queryHit(map, e) {
 export async function setBasemap(map, name, after) {
   detachDeck(map)
   const view = map.__view || '2d'
-  if (name === 'satellite') map.setStyle(cinematicStyle())
-  else if (name === 'terrain') map.setStyle(cinematicStyle())
-  else if (name === 'dark') map.setStyle(planStyle())
-  else if (name === 'liberty') map.setStyle('https://tiles.openfreemap.org/styles/liberty')
-  else map.setStyle('https://tiles.openfreemap.org/styles/positron')
-  map.once('style.load', () => {
+  const target =
+    name === 'satellite' ? cinematicStyle()
+      : name === 'terrain' ? cinematicStyle()
+        : name === 'dark' ? planStyle()
+          : name === 'liberty' ? 'https://tiles.openfreemap.org/styles/liberty'
+            : 'https://tiles.openfreemap.org/styles/positron'
+  let done = false
+  let timer = null
+  const finish = () => {
+    if (done || !map.isStyleLoaded()) return
+    done = true
+    map.off('style.load', finish)
+    map.off('idle', finish)
+    if (timer != null) clearTimeout(timer)
     if (view === '3d' || name === 'terrain') enhance3d(map)
     if (name === 'terrain' && view !== '3d') {
       try { map.setTerrain({ source: 'terrain', exaggeration: 1.15 }) } catch { /* */ }
     }
-    after()
-  })
+    after?.()
+  }
+  map.on('style.load', finish)
+  map.on('idle', finish)
+  map.setStyle(target)
+  timer = setTimeout(finish, 1200)
+  finish()
 }
 
 export function visibleLayers(geo, recipe, userFc, extras = {}) {
@@ -539,6 +572,7 @@ export function visibleLayers(geo, recipe, userFc, extras = {}) {
   if (extras.neighborLines?.features?.length) layers.push({ name: 'neighbors', fc: extras.neighborLines })
   if (extras.candidateFc?.features?.length) layers.push({ name: 'candidate', fc: extras.candidateFc })
   if (recipe.holesLayer && extras.holes?.features?.length) layers.push({ name: 'holes', fc: extras.holes })
+  if (recipe.dtLayer && extras.dtPaths?.features?.length) layers.push({ name: 'dt-paths', fc: extras.dtPaths })
   if (userFc?.features?.length) layers.push({ name: 'user', fc: userFc })
   return layers
 }

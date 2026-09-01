@@ -1,8 +1,8 @@
 import { v, buildGeo, buildPlanned } from './lobes.js'
 import { defaultRecipe, applyRecipe, counts, chipList, dismissChip, renderFacets } from './filters.js'
-import { createMap, dressAndPaint, setMeasureData, setUserData, setProbeData, queryHit, setBasemap, visibleLayers, applyView, setSelectedState } from './map.js'
+import { createMap, dressAndPaint, setMeasureData, setUserData, setProbeData, queryHit, setBasemap, visibleLayers, applyView, setSelectedState } from './map.js?v=24'
 import { searchHits, measureDistance, measureRadius, layersToGeoJSON, layersToKml, download, parseImport, snapshotCanvas, downloadPng } from './tools.js'
-import { interpret, contextChips, getKey, setKey } from './chat.js'
+import { interpret, contextChips } from './chat.js?v=24'
 import { loadPacked, pickPoint, describePick } from './heavy.js'
 import { buildHoles } from './holes.js'
 import { tier1Candidates, tier1CandidatesAt, monitoredIds, neighborLines, candidateFc, PIN_ID, sessionKey, persistNeighbors, recallNeighbors, applyRecall, appendEvent, auditPayload, auditCsv } from './neighbors.js'
@@ -21,6 +21,9 @@ const state = {
   geo: null,
   map: null,
   voiceOut: false,
+  cursor: null,
+  frameMs: null,
+  dtPaths: { type: 'FeatureCollection', features: [] },
 }
 
 function recipeHash() {
@@ -79,6 +82,7 @@ function paint() {
     dressAndPaint(state.map, state.geo, state.recipe, {
       gh: state.heavy?.gh,
       dt: state.heavy?.dt,
+      dtPaths: state.dtPaths,
       selectedId: state.selected,
       holes: state.holesFc,
       neighborIds,
@@ -94,9 +98,44 @@ function paint() {
     paint()
     recipeHash()
   })
+  renderContextStrip()
   renderChips()
   renderCard()
+  updateHud()
   recipeHash()
+}
+
+function renderContextStrip() {
+  const label = $('context-label')
+  const box = $('context-actions')
+  if (!label || !box) return
+  let context = 'overview'
+  if (state.section === 'neighbors') context = 'neighbor session'
+  else if (state.selected) context = 'site selection'
+  else if (state.section === 'gh') context = 'groundhog view'
+  else if (state.section === 'dt') context = 'drive-test view'
+  label.textContent = `Context · ${context}`
+
+  const actions = []
+  if (state.selected) actions.push({ key: 'inspect', label: 'Inspect' })
+  if (state.selected && state.selected !== PIN_ID) actions.push({ key: 'tier1', label: 'Tier-1' })
+  if (state.section === 'neighbors') actions.push({ key: 'audit', label: 'Export audit' })
+  actions.push({ key: 'drop', label: 'New site' })
+  actions.push({ key: 'snapshot', label: 'Snapshot' })
+  actions.push({ key: 'filters', label: 'Layers' })
+
+  box.innerHTML = actions.map((a) => `<button type="button" class="ctx-btn" data-ctx="${a.key}">${a.label}</button>`).join('')
+  box.querySelectorAll('[data-ctx]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.ctx
+      if (key === 'inspect') toggle('copilot', true)
+      else if (key === 'tier1' && state.selected) startNeighbors(state.selected)
+      else if (key === 'audit') exportAudit('json')
+      else if (key === 'drop') setTool('drop')
+      else if (key === 'snapshot') $('btn-shot').click()
+      else if (key === 'filters') toggle('rail', true)
+    })
+  })
 }
 
 function renderChips() {
@@ -114,9 +153,14 @@ function renderChips() {
 
 function renderStarters() {
   const chips = contextChips({ section: state.section, selected: state.selected, inv: state.inv })
-  $('starters').innerHTML = chips.map((s) => `<button type="button" class="starter">${s}</button>`).join('')
+  $('starters').innerHTML = chips.map((s) => {
+    const label = String(s.label ?? s).replace(/</g, '&lt;')
+    const ask = String(s.ask ?? s).replace(/"/g, '&quot;')
+    const hint = s.hint ? `<span class="starter-hint">${String(s.hint).replace(/</g, '&lt;')}</span>` : ''
+    return `<button type="button" class="starter" data-ask="${ask}"><span class="starter-label">${label}</span>${hint}</button>`
+  }).join('')
   $('starters').querySelectorAll('button').forEach((b) => {
-    b.onclick = () => ask(b.textContent)
+    b.onclick = () => ask(b.dataset.ask)
   })
 }
 
@@ -489,6 +533,22 @@ function placeCard() {
   card.classList.toggle('beside-rail', !$('rail').hidden)
 }
 
+function updateHud() {
+  const c = state.cursor
+  const z = state.map?.getZoom?.()
+  const crs = state.inv?.crs || 'EPSG:4326'
+  const selectedN = state.selected ? 1 : 0
+  if ($('hud-crs')) $('hud-crs').textContent = `CRS ${crs}`
+  if ($('hud-zoom')) $('hud-zoom').textContent = `Zoom ${z ? z.toFixed(2) : '—'}`
+  if ($('hud-cursor')) {
+    $('hud-cursor').textContent = c
+      ? `Cursor ${c.lat.toFixed(5)} ${c.lng.toFixed(5)}`
+      : 'Cursor —'
+  }
+  if ($('hud-selection')) $('hud-selection').textContent = `Selection ${selectedN}`
+  if ($('hud-latency')) $('hud-latency').textContent = `Frame ${state.frameMs ? state.frameMs.toFixed(1) : '—'} ms`
+}
+
 function toggle(id, show) {
   const el = $(id)
   if (show === undefined) el.hidden = !el.hidden
@@ -609,16 +669,17 @@ function bindTools() {
     neighborLines: state.neighbors ? neighborLines(state.inv, state.neighbors, monitoredIds(state.neighbors)) : null,
     candidateFc: candidateFc(state.neighbors),
     holes: state.holesFc,
+    dtPaths: state.dtPaths,
   })
   $('btn-geojson').onclick = () => {
     const extras = exportExtras()
     download('ns-qaw-a.geojson', JSON.stringify(layersToGeoJSON(visibleLayers(state.geo, state.recipe, state.userFc, extras)), null, 2), 'application/geo+json')
-    logMsg('GeoJSON is vector layers only — Groundhog and drive-test stay on the GPU, not in this file.')
+    logMsg('GeoJSON exports vector layers. Groundhog and DT sample points remain GPU-only; DT routes are included when enabled.')
   }
   $('btn-kml').onclick = () => {
     const extras = exportExtras()
     download('ns-qaw-a.kml', layersToKml(visibleLayers(state.geo, state.recipe, state.userFc, extras)), 'application/vnd.google-earth.kml+xml')
-    logMsg('KML is vector layers only — Groundhog and drive-test stay on the GPU, not in this file.')
+    logMsg('KML exports vector layers. Groundhog and DT sample points remain GPU-only; DT routes are included when enabled.')
   }
   $('btn-shot').onclick = () => {
     recipeHash()
@@ -691,11 +752,15 @@ function onMapClick(e) {
 async function boot() {
   const inv = await fetch('./inventory.json').then((r) => r.json())
   state.inv = inv
-  const [gh, dt] = await Promise.all([
+  const [gh, dt, dtPaths] = await Promise.all([
     loadPacked(inv.groundhog?.file ? `./${inv.groundhog.file}` : './gh.bin'),
     loadPacked(inv.drive_test?.file ? `./${inv.drive_test.file}` : './dt.bin'),
+    inv.drive_test_paths?.file
+      ? fetch(`./${inv.drive_test_paths.file}`).then((r) => (r.ok ? r.json() : { type: 'FeatureCollection', features: [] }))
+      : Promise.resolve({ type: 'FeatureCollection', features: [] }),
   ])
   state.heavy = { gh, dt }
+  state.dtPaths = dtPaths
   state.holesFc = buildHoles(gh)
   const cam = loadHash()
   document.querySelectorAll('[data-view]').forEach((b) => b.classList.toggle('on', b.dataset.view === state.recipe.view))
@@ -708,22 +773,28 @@ async function boot() {
     if (cam?.center) {
       state.map.jumpTo({ center: cam.center, zoom: cam.zoom, pitch: cam.pitch, bearing: cam.bearing })
     }
-    const c = counts(inv, state.recipe)
     const clk = inv.clock
     if ($('clock-label')) {
       $('clock-label').textContent = clk?.t
         ? `${clk.t} ← ${clk.source}`
         : 'cell-plan snapshot'
     }
-    $('hud').textContent = `${inv.crs || 'EPSG:4326'} · WGS84`
-    logMsg(`<b>Instrument, not catalogue.</b> MapLibre · deck.gl GPU · one clock. ${c.sites} rooftops · ${c.gh.toLocaleString()} GH samples · ${c.dt.toLocaleString()} DT samples. Datum WGS84. 2D until 3D earns its place.`)
+    updateHud()
     renderStarters()
   }
   state.map = createMap($('map'), { view: state.recipe.view, onLoad: finish })
   window.__map = state.map
   setTimeout(() => { if (!booted) finish() }, 1200)
+  let lastRender = performance.now()
+  state.map.on('render', () => {
+    const now = performance.now()
+    state.frameMs = now - lastRender
+    lastRender = now
+    updateHud()
+  })
   state.map.on('mousemove', (e) => {
-    $('hud').textContent = `${e.lngLat.lat.toFixed(5)} N  ${e.lngLat.lng.toFixed(5)} E · WGS84`
+    state.cursor = { lat: e.lngLat.lat, lng: e.lngLat.lng }
+    updateHud()
   })
   state.map.on('click', onMapClick)
   state.map.on('moveend', () => recipeHash())
@@ -738,8 +809,6 @@ async function boot() {
   bindSearch()
   bindTools()
   bindVoice()
-  $('openai-key').value = getKey()
-  $('openai-key').addEventListener('change', () => setKey($('openai-key').value))
   $('composer').addEventListener('submit', (e) => {
     e.preventDefault()
     const q = $('ask').value.trim()

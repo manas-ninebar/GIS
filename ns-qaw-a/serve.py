@@ -46,7 +46,7 @@ class Handler(SimpleHTTPRequestHandler):
         body = self.rfile.read(n)
         key = (self.headers.get("X-OpenAI-Key") or os.environ.get("OPENAI_API_KEY") or "").strip()
         if not key:
-            self._send_json(401, {"error": "Paste an OpenAI key in Copilot, or set OPENAI_API_KEY."})
+            self._send_json(401, {"error": "OPENAI_API_KEY is not set on the server."})
             return
         req = urllib.request.Request(
             OPENAI,

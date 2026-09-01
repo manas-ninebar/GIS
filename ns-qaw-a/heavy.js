@@ -5,7 +5,7 @@ const COLOR_STOPS = [
   [-105, [210, 118, 29]],
   [-95, [238, 154, 59]],
   [-85, [79, 189, 182]],
-  [-70, [111, 190, 226]],
+  [-70, [196, 177, 138]],
 ]
 
 // Same bands the coverage-hole threshold uses (≤ −105 = hole). Isoband contour, not a heatmap blur.
@@ -13,7 +13,7 @@ const CONTOUR_BANDS = [
   { threshold: [-999, -105], color: [169, 67, 58, 150] },
   { threshold: [-105, -95], color: [210, 118, 29, 140] },
   { threshold: [-95, -85], color: [238, 154, 59, 120] },
-  { threshold: [-85, 999], color: [111, 190, 226, 100] },
+  { threshold: [-85, 999], color: [196, 177, 138, 100] },
 ]
 
 function lerpColor(rsrp) {

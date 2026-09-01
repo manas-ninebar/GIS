@@ -3,18 +3,35 @@ import { defaultRecipe, nPts } from './filters.js'
 
 const KEY = 'n1_openai_key'
 
-/** Recommended chips for the current context — not a fixed list. A section (gh/dt/holes)
- *  surfaces next-actions for that section; a selection adds site actions. */
+/** Verbs for the Copilot rail — labels are what the engineer sees; ask is what parseAsk matches. */
 export function contextChips({ section, selected, inv } = {}) {
   const chips = []
-  if (section === 'gh') chips.push('coverage holes', 'show drive test', 'back to overview')
-  else if (section === 'dt') chips.push('show groundhog', 'back to overview')
-  else if (section === 'holes') chips.push('show groundhog', 'back to overview')
-  else if (section === 'neighbors') chips.push('export neighbour audit', 'drop a new site', 'back to overview')
-  else chips.push('show planned sites', 'macros in alarm', 'drop a new site', 'show drive test', 'show groundhog')
+  if (section === 'gh') {
+    chips.push({ label: 'Coverage holes', ask: 'coverage holes', hint: 'Enable hole polygons' })
+    chips.push({ label: 'Drive routes', ask: 'show drive test', hint: 'Show DT path + points' })
+    chips.push({ label: 'Overview', ask: 'back to overview', hint: 'Return to base map' })
+  } else if (section === 'dt') {
+    chips.push({ label: 'Groundhog', ask: 'show groundhog', hint: 'Switch to GH heatmap' })
+    chips.push({ label: 'Overview', ask: 'back to overview', hint: 'Return to base map' })
+  } else if (section === 'holes') {
+    chips.push({ label: 'Groundhog', ask: 'show groundhog', hint: 'Keep GH, hide holes' })
+    chips.push({ label: 'Overview', ask: 'back to overview', hint: 'Return to base map' })
+  } else if (section === 'neighbors') {
+    chips.push({ label: 'Export JSON', ask: 'export neighbour audit json', hint: 'Download audit trail' })
+    chips.push({ label: 'Export CSV', ask: 'export neighbour audit csv', hint: 'Download tabular audit' })
+    chips.push({ label: 'Drop site', ask: 'drop a new site', hint: 'Create candidate pin' })
+    chips.push({ label: 'Overview', ask: 'back to overview', hint: 'Return to base map' })
+  } else {
+    chips.push({ label: 'Planned sites', ask: 'show planned sites', hint: 'Planned layer and filter' })
+    chips.push({ label: 'Sites in alarm', ask: 'macros in alarm', hint: 'Fault-focused shortlist' })
+    chips.push({ label: 'Drive routes', ask: 'show drive test', hint: 'Enable DT path + points' })
+    chips.push({ label: 'Groundhog', ask: 'show groundhog', hint: 'Enable GH signal layer' })
+    chips.push({ label: 'Drop site', ask: 'drop a new site', hint: 'Start Tier-1 workflow' })
+  }
   if (selected && inv?.sites?.some((s) => s.site_id === selected)) {
-    if (section !== 'neighbors') chips.push(`tier-1 neighbours for ${selected}`)
-    chips.push(`what alarms on ${selected}`, 'clear selection')
+    if (section !== 'neighbors') chips.push({ label: `Tier-1 for ${selected}`, ask: `tier-1 neighbours for ${selected}`, hint: 'Facing sectors within 1.2 km' })
+    chips.push({ label: `Alarms on ${selected}`, ask: `what alarms on ${selected}`, hint: 'Root cause and severity' })
+    chips.push({ label: `Azimuth on ${selected}`, ask: `azimuth for ${selected}`, hint: 'Sector direction check' })
   }
   return chips
 }
@@ -106,11 +123,12 @@ export function parseAsk(text, inv, selectedId) {
     return { type: 'recipe', recipe, section: null, narrate: `${n} planned rooftops from the cell plan (siteType New) — gold rings. Not an ECGI-master coming-soon file.`, fly: 'planned' }
   }
 
-  if (/drive test|show drive/.test(t)) {
+  if (/drive test|show drive|drive route|drive path/.test(t)) {
     const recipe = defaultRecipe()
     recipe.dtLayer = true
     recipe.ghLayer = false
-    return { type: 'recipe', recipe, section: 'dt', narrate: `Drive-test layer — ${nPts(inv.drive_test).toLocaleString()} samples.`, fly: 'dt' }
+    const routes = Number(inv.drive_test_paths?.n_routes || 0)
+    return { type: 'recipe', recipe, section: 'dt', narrate: `Drive test on: ${routes.toLocaleString()} routes, ${nPts(inv.drive_test).toLocaleString()} points.`, fly: 'dt' }
   }
 
   if (/groundhog|heatmap|rsrp layer/.test(t)) {
@@ -192,7 +210,12 @@ export function parseAsk(text, inv, selectedId) {
     return { type: 'qa', q: 'empty-enum', narrate: 'This TOK ingest is 4G B3 macro only. Those filters exist and show 0 — no rooftops invented for 5G, mmWave, RIUD, DAS, IDSC or ODSC.' }
   }
   if (/voc|complaint/.test(t)) {
-    return { type: 'qa', q: 'voc', narrate: 'No geocoded VOC in this TOK ingest — WISE/Sukayat rows have no lat/lng, so nothing is drawn.' }
+    const total = nPts(inv.voc)
+    const tokyo = Number(inv.voc?.tokyo_n || 0)
+    if (!total) {
+      return { type: 'qa', q: 'voc', narrate: 'No geocoded VOC loaded in this ingest.' }
+    }
+    return { type: 'qa', q: 'voc', narrate: `VOC loaded: ${total.toLocaleString()} geocoded rows (${tokyo.toLocaleString()} in Tokyo bounds).` }
   }
   if (/how many|sukayat|kanto|open 5g/.test(t)) {
     const sx = inv.sukayat_index || {}
@@ -203,18 +226,19 @@ export function parseAsk(text, inv, selectedId) {
     return { type: 'select', select: siteFromText.site_id, narrate: `Flew to ${siteFromText.site_id}.`, fly: 'select' }
   }
 
-  return { type: 'help', narrate: 'I can show planned sites, alarms, drop a new site, drive test, Groundhog, coverage holes, Tier-1 neighbours for a TOK_ id, 2D/3D, or fly to a site. Ask in those terms — or paste an OpenAI key to author any recipe.' }
+  return { type: 'help', narrate: 'Try: planned sites, sites in alarm, show drive test, show groundhog, or tier-1 neighbours for TOK_001.' }
 }
 
 export async function interpret(text, inv, selectedId) {
   const local = parseAsk(text, inv, selectedId)
   if (local.type !== 'help') return local
+  const headers = { 'Content-Type': 'application/json' }
   const key = getKey()
-  if (!key) return local
+  if (key) headers['X-OpenAI-Key'] = key
   try {
     const res = await fetch('/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-OpenAI-Key': key },
+      headers,
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         temperature: 0,
@@ -235,18 +259,15 @@ Use only site ids from the digest. Never invent rooftops, 5G, mmWave, RIUD or DA
         ],
       }),
     })
+    if (res.status === 401 || !res.ok) return local
     const data = await res.json()
-    if (!res.ok) {
-      const err = data.error?.message || data.error || res.statusText
-      return { type: 'help', narrate: `OpenAI: ${err}` }
-    }
     const raw = data.choices?.[0]?.message?.content
     const intent = JSON.parse(raw)
     if (intent.recipe) intent.recipe = { ...defaultRecipe(), ...intent.recipe }
     if (!intent.narrate) intent.narrate = 'Done.'
     return intent
-  } catch (err) {
-    return { type: 'help', narrate: `Copilot could not reach OpenAI. Run python serve.py (not http.server). ${err.message || err}` }
+  } catch {
+    return local
   }
 }
 

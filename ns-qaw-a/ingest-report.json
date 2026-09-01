@@ -13,14 +13,22 @@
   "partial": 2,
   "locked": 4,
   "sites_in_alarm": 2,
-  "gh_points": 8503,
-  "gh_bytes": 102036,
-  "dt_points": 5235,
-  "dt_bytes": 62820,
+  "gh_points": 12508,
+  "gh_bytes": 150096,
+  "gh_sources": 10,
+  "dt_points": 27286,
+  "dt_bytes": 327432,
+  "dt_sources": 5,
+  "dt_routes": 5,
+  "dt_route_points": 13369,
+  "voc_rows": 668882,
+  "voc_tokyo": 234750,
+  "relation_rows": 326,
+  "alarm_rows": 1501,
   "sukayat": {
     "read": true,
-    "rows_scanned": 3475,
-    "open_kanto": 324,
+    "rows_scanned": 1501,
+    "open_kanto": 94,
     "note": "No coordinates \u2014 chat index only, not map pins."
   }
 }
